@@ -120,6 +120,13 @@ async function handleNewsletter(request, env) {
   });
 }
 
+function cleanProductTitle(raw) {
+  // Strip "SHOCK™ - " prefix (including mojibake variants like "SHOCKâ„¢ - ")
+  const cleaned = raw.replace(/^shock[^\-]*-\s*/i, "").trim();
+  // Title-case the result
+  return (cleaned || raw).replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 async function handleProducts(env) {
   const STOREFRONT_TOKEN = "0a215f25881fcbcbd0a0a7d8405b7ff6";
   const query = `{
@@ -152,14 +159,14 @@ async function handleProducts(env) {
   const edges = raw.data?.products?.edges || [];
   const products = edges.map(({ node: p }) => ({
     id: p.id,
-    title: p.title,
+    title: cleanProductTitle(p.title),
     handle: p.handle,
-    description: p.description || "",
+    description: "",
     productType: p.productType || "",
     price: p.variants?.edges?.[0]?.node?.price?.amount || "0",
     image: p.images?.edges?.[0]?.node?.src || null,
   }));
-  return new Response(JSON.stringify({ products, _count: products.length, _errors: raw.errors || null }), {
+  return new Response(JSON.stringify({ products }), {
     headers: { "Content-Type": "application/json", ...CORS },
   });
 }
