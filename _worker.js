@@ -121,23 +121,42 @@ async function handleNewsletter(request, env) {
 }
 
 async function handleProducts(env) {
+  const STOREFRONT_TOKEN = "0a215f25881fcbcbd0a0a7d8405b7ff6";
+  const query = `{
+    products(first: 50) {
+      edges {
+        node {
+          id
+          title
+          handle
+          description
+          productType
+          priceRange { minVariantPrice { amount } }
+          images(first: 1) { edges { node { url } } }
+        }
+      }
+    }
+  }`;
   const resp = await fetch(
-    "https://shock-male-grooming.myshopify.com/admin/api/2024-01/products.json?status=active&fields=id,title,handle,body_html,product_type,images,variants&limit=50",
+    "https://shock-male-grooming.myshopify.com/api/2024-01/graphql.json",
     {
+      method: "POST",
       headers: {
-        "X-Shopify-Access-Token": env.SHOPIFY_ADMIN_TOKEN,
+        "Content-Type": "application/json",
+        "X-Shopify-Storefront-Access-Token": STOREFRONT_TOKEN,
       },
+      body: JSON.stringify({ query }),
     }
   );
   const data = await resp.json();
-  const products = (data.products || []).map((p) => ({
+  const products = (data.data?.products?.edges || []).map(({ node: p }) => ({
     id: p.id,
     title: p.title,
     handle: p.handle,
-    description: (p.body_html || "").replace(/<[^>]*>/g, "").trim(),
-    productType: p.product_type || "",
-    price: p.variants?.[0]?.price || "0",
-    image: p.images?.[0]?.src || null,
+    description: p.description || "",
+    productType: p.productType || "",
+    price: p.priceRange?.minVariantPrice?.amount || "0",
+    image: p.images?.edges?.[0]?.node?.url || null,
   }));
   return new Response(JSON.stringify({ products }), {
     headers: { "Content-Type": "application/json", ...CORS },
