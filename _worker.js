@@ -25,6 +25,10 @@ export default {
       return handleBarbieri(request, env);
     }
 
+    if (pathname === "/api/products") {
+      return handleProducts(env);
+    }
+
     return env.ASSETS.fetch(request);
   },
 };
@@ -112,6 +116,30 @@ async function handleNewsletter(request, env) {
 
   return new Response(JSON.stringify({ success: true }), {
     status: 200,
+    headers: { "Content-Type": "application/json", ...CORS },
+  });
+}
+
+async function handleProducts(env) {
+  const resp = await fetch(
+    "https://shock-male-grooming.myshopify.com/admin/api/2024-01/products.json?status=active&fields=id,title,handle,body_html,product_type,images,variants&limit=50",
+    {
+      headers: {
+        "X-Shopify-Access-Token": env.SHOPIFY_ADMIN_TOKEN,
+      },
+    }
+  );
+  const data = await resp.json();
+  const products = (data.products || []).map((p) => ({
+    id: p.id,
+    title: p.title,
+    handle: p.handle,
+    description: (p.body_html || "").replace(/<[^>]*>/g, "").trim(),
+    productType: p.product_type || "",
+    price: p.variants?.[0]?.price || "0",
+    image: p.images?.[0]?.src || null,
+  }));
+  return new Response(JSON.stringify({ products }), {
     headers: { "Content-Type": "application/json", ...CORS },
   });
 }
