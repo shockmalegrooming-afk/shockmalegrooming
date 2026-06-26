@@ -131,8 +131,8 @@ async function handleProducts(env) {
           handle
           description
           productType
-          priceRange { minVariantPrice { amount } }
-          images(first: 1) { edges { node { url } } }
+          variants(first: 1) { edges { node { price { amount } } } }
+          images(first: 1) { edges { node { src } } }
         }
       }
     }
@@ -148,17 +148,18 @@ async function handleProducts(env) {
       body: JSON.stringify({ query }),
     }
   );
-  const data = await resp.json();
-  const products = (data.data?.products?.edges || []).map(({ node: p }) => ({
+  const raw = await resp.json();
+  const edges = raw.data?.products?.edges || [];
+  const products = edges.map(({ node: p }) => ({
     id: p.id,
     title: p.title,
     handle: p.handle,
     description: p.description || "",
     productType: p.productType || "",
-    price: p.priceRange?.minVariantPrice?.amount || "0",
-    image: p.images?.edges?.[0]?.node?.url || null,
+    price: p.variants?.edges?.[0]?.node?.price?.amount || "0",
+    image: p.images?.edges?.[0]?.node?.src || null,
   }));
-  return new Response(JSON.stringify({ products }), {
+  return new Response(JSON.stringify({ products, _count: products.length, _errors: raw.errors || null }), {
     headers: { "Content-Type": "application/json", ...CORS },
   });
 }
