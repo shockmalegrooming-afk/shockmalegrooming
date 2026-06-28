@@ -30,18 +30,23 @@
   `,{input:{firstName:e,lastName:t,email:r,password:o,phone:n||void 0,acceptsMarketing:!1}}),i=s?.data?.customerCreate;if(i?.customerUserErrors?.length)throw Error(i.customerUserErrors[0].message);await u(r,o)}async function l(e){let t=await a(`
     query getCustomer($token: String!) {
       customer(customerAccessToken: $token) {
-        firstName lastName email
-        orders(first: 5, sortKey: PROCESSED_AT, reverse: true) {
+        id firstName lastName email phone
+        orders(first: 10, sortKey: PROCESSED_AT, reverse: true) {
           edges {
             node {
-              name processedAt
+              id name processedAt canceledAt cancelReason
+              financialStatus fulfillmentStatus
               totalPrice { amount currencyCode }
-              lineItems(first: 5) {
+              lineItems(first: 10) {
                 edges { node { title quantity } }
+              }
+              successfulFulfillments(first: 5) {
+                trackingInfo(first: 5) { number url }
+                trackingCompany
               }
             }
           }
         }
       }
     }
-  `,{token:e});return t?.data?.customer}function f(){localStorage.removeItem("shopify_token"),localStorage.removeItem("shopify_email")}let d=(0,r.createContext)({token:null,email:null,logout:()=>{},refreshAuth:()=>{}});e.s(["SHOPIFY_DOMAIN",0,o,"STOREFRONT_TOKEN",0,n,"ShopifyProvider",0,function({children:e}){let[o,n]=(0,r.useState)(()=>localStorage.getItem("shopify_token")),[s,a]=(0,r.useState)(()=>localStorage.getItem("shopify_email")),i=(0,r.useCallback)(()=>{n(localStorage.getItem("shopify_token")),a(localStorage.getItem("shopify_email"))},[]),u=(0,r.useCallback)(()=>{f(),n(null),a(null)},[]);return(0,t.jsx)(d.Provider,{value:{token:o,email:s,logout:u,refreshAuth:i},children:e})},"buyProduct",0,i,"customerLogin",0,u,"customerLogout",0,f,"customerRegister",0,c,"fetchCustomer",0,l,"shopifyFetch",0,a,"useShopify",0,()=>(0,r.useContext)(d)])}]);
+`,{token:e});return t?.data?.customer}function f(){localStorage.removeItem("shopify_token"),localStorage.removeItem("shopify_email")}let d=(0,r.createContext)({token:null,email:null,logout:()=>{},refreshAuth:()=>{}});e.s(["SHOPIFY_DOMAIN",0,o,"STOREFRONT_TOKEN",0,n,"ShopifyProvider",0,function({children:e}){let[o,n]=(0,r.useState)(()=>localStorage.getItem("shopify_token")),[s,a]=(0,r.useState)(()=>localStorage.getItem("shopify_email")),i=(0,r.useCallback)(()=>{n(localStorage.getItem("shopify_token")),a(localStorage.getItem("shopify_email"))},[]),u=(0,r.useCallback)(()=>{f(),n(null),a(null)},[]);return(0,t.jsx)(d.Provider,{value:{token:o,email:s,logout:u,refreshAuth:i},children:e})},"buyProduct",0,i,"customerLogin",0,u,"customerLogout",0,f,"customerRegister",0,c,"fetchCustomer",0,l,"shopifyFetch",0,a,"useShopify",0,()=>(0,r.useContext)(d)])}]);

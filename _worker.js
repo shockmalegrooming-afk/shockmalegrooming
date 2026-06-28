@@ -29,6 +29,10 @@ export default {
       return handleProducts(env);
     }
 
+    if (pathname === "/api/cancel-order") {
+      return handleCancelOrder(request, env);
+    }
+
     return env.ASSETS.fetch(request);
   },
 };
@@ -167,6 +171,58 @@ async function handleProducts(env) {
     image: p.images?.edges?.[0]?.node?.src || null,
   }));
   return new Response(JSON.stringify({ products }), {
+    headers: { "Content-Type": "application/json", ...CORS },
+  });
+}
+
+async function handleCancelOrder(request, env) {
+  if (request.method !== "POST") {
+    return new Response("Method not allowed", { status: 405, headers: CORS });
+  }
+  const { token, orderId } = await request.json().catch(() => ({}));
+  if (!token || !orderId) {
+    return new Response(JSON.stringify({ error: "Parametri mancanti" }), {
+      status: 400, headers: { "Content-Type": "application/json", ...CORS },
+    });
+  }
+  // Verify token belongs to a real customer via Storefront API
+  const verifyResp = await fetch(
+    "https://shock-male-grooming.myshopify.com/api/2024-01/graphql.json",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Shopify-Storefront-Access-Token": "0a215f25881fcbcbd0a0a7d8405b7ff6",
+      },
+      body: JSON.stringify({ query: `query { customer(customerAccessToken: "${token}") { id } }` }),
+    }
+  );
+  const { data } = await verifyResp.json();
+  if (!data?.customer?.id) {
+    return new Response(JSON.stringify({ error: "Token non valido" }), {
+      status: 401, headers: { "Content-Type": "application/json", ...CORS },
+    });
+  }
+  // orderId is like "gid://shopify/Order/12345" — extract numeric part
+  const numericId = orderId.split("/").pop();
+  const cancelResp = await fetch(
+    `https://shock-male-grooming.myshopify.com/admin/api/2024-01/orders/${numericId}/cancel.json`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Shopify-Access-Token": env.SHOPIFY_ADMIN_TOKEN,
+      },
+      body: JSON.stringify({ reason: "customer", email: true }),
+    }
+  );
+  const result = await cancelResp.json();
+  if (!cancelResp.ok) {
+    return new Response(JSON.stringify({ error: result.errors || "Errore annullamento" }), {
+      status: cancelResp.status, headers: { "Content-Type": "application/json", ...CORS },
+    });
+  }
+  return new Response(JSON.stringify({ success: true }), {
     headers: { "Content-Type": "application/json", ...CORS },
   });
 }
