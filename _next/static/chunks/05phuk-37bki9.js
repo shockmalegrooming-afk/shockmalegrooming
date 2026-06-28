@@ -20,7 +20,7 @@
         customerUserErrors { message }
       }
     }
-  `,{email:e,password:t}),o=r?.data?.customerAccessTokenCreate;if(o?.customerUserErrors?.length)throw Error(o.customerUserErrors[0].message);let n=o?.customerAccessToken?.accessToken;return n&&(localStorage.setItem("shopify_token",n),localStorage.setItem("shopify_email",e)),n}async function c(e,t,r,o,n){let s=await a(`
+  `,{email:e,password:t}),o=r?.data?.customerAccessTokenCreate;if(o?.customerUserErrors?.length)throw Error(o.customerUserErrors[0].message);let n=o?.customerAccessToken?.accessToken;if(n){localStorage.setItem("shopify_token",n),localStorage.setItem("shopify_email",e);l(n).then(c=>{if(c?.firstName)localStorage.setItem("shopify_name",c.firstName)}).catch(()=>{})}return n}async function c(e,t,r,o,n){let s=await a(`
     mutation register($input: CustomerCreateInput!) {
       customerCreate(input: $input) {
         customer { id email }
@@ -49,4 +49,4 @@
         }
       }
     }
-`,{token:e});return t?.data?.customer}function f(){localStorage.removeItem("shopify_token"),localStorage.removeItem("shopify_email")}let d=(0,r.createContext)({token:null,email:null,logout:()=>{},refreshAuth:()=>{}});e.s(["SHOPIFY_DOMAIN",0,o,"STOREFRONT_TOKEN",0,n,"ShopifyProvider",0,function({children:e}){let[o,n]=(0,r.useState)(()=>localStorage.getItem("shopify_token")),[s,a]=(0,r.useState)(()=>localStorage.getItem("shopify_email")),i=(0,r.useCallback)(()=>{n(localStorage.getItem("shopify_token")),a(localStorage.getItem("shopify_email"))},[]),u=(0,r.useCallback)(()=>{f(),n(null),a(null)},[]);return(0,t.jsx)(d.Provider,{value:{token:o,email:s,logout:u,refreshAuth:i},children:e})},"buyProduct",0,i,"customerLogin",0,u,"customerLogout",0,f,"customerRegister",0,c,"fetchCustomer",0,l,"shopifyFetch",0,a,"useShopify",0,()=>(0,r.useContext)(d)])}]);
+`,{token:e});return t?.data?.customer}function f(){localStorage.removeItem("shopify_token"),localStorage.removeItem("shopify_email"),localStorage.removeItem("shopify_name")}let d=(0,r.createContext)({token:null,email:null,name:null,logout:()=>{},refreshAuth:()=>{}});e.s(["SHOPIFY_DOMAIN",0,o,"STOREFRONT_TOKEN",0,n,"ShopifyProvider",0,function({children:e}){let[o,n]=(0,r.useState)(()=>localStorage.getItem("shopify_token")),[s,a]=(0,r.useState)(()=>localStorage.getItem("shopify_email")),[p,q]=(0,r.useState)(()=>localStorage.getItem("shopify_name")),i=(0,r.useCallback)(()=>{n(localStorage.getItem("shopify_token")),a(localStorage.getItem("shopify_email")),q(localStorage.getItem("shopify_name"))},[]),u=(0,r.useCallback)(()=>{f(),n(null),a(null),q(null)},[]);return(0,t.jsx)(d.Provider,{value:{token:o,email:s,name:p,logout:u,refreshAuth:i},children:e})},"buyProduct",0,i,"customerLogin",0,u,"customerLogout",0,f,"customerRegister",0,c,"fetchCustomer",0,l,"shopifyFetch",0,a,"useShopify",0,()=>(0,r.useContext)(d)])}]);
