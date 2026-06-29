@@ -37,6 +37,10 @@ export default {
       return handleCreateLabel(request, env);
     }
 
+    if (pathname === "/api/sender-addresses") {
+      return handleSenderAddresses(request, env);
+    }
+
     return env.ASSETS.fetch(request);
   },
 };
@@ -248,6 +252,21 @@ function labelJson(obj, status) {
   });
 }
 
+// Elenco indirizzi mittente configurati su Sendcloud (per scegliere la sede di partenza)
+async function handleSenderAddresses(request, env) {
+  const pwd = request.headers.get("X-Admin-Password");
+  if (!pwd || pwd !== env.ADMIN_PASSWORD) return labelJson({ error: "Non autorizzato" }, 401);
+  if (!env.SENDCLOUD_PUBLIC_KEY || !env.SENDCLOUD_SECRET_KEY) return labelJson({ addresses: [] });
+  const auth = "Basic " + btoa(`${env.SENDCLOUD_PUBLIC_KEY}:${env.SENDCLOUD_SECRET_KEY}`);
+  const r = await fetch("https://panel.sendcloud.sc/api/v2/user/addresses/sender", { headers: { Authorization: auth } });
+  const j = await r.json().catch(() => ({}));
+  const addresses = (j.sender_addresses || []).map((a) => ({
+    id: a.id,
+    label: [a.company_name || a.contact_name, a.street, a.house_number, a.city].filter(Boolean).join(" "),
+  }));
+  return labelJson({ addresses });
+}
+
 // Crea un'etichetta di spedizione con Sendcloud e scrive il tracking su Shopify
 async function handleCreateLabel(request, env) {
   if (request.method !== "POST") {
@@ -261,7 +280,7 @@ async function handleCreateLabel(request, env) {
     return labelJson({ error: "Sendcloud non configurato: aggiungi SENDCLOUD_PUBLIC_KEY e SENDCLOUD_SECRET_KEY su Cloudflare" }, 500);
   }
 
-  const { orderId, weight, length, width, height } = await request.json().catch(() => ({}));
+  const { orderId, weight, length, width, height, senderAddressId } = await request.json().catch(() => ({}));
   if (!orderId) return labelJson({ error: "orderId mancante" }, 400);
 
   const base = "https://shock-male-grooming.myshopify.com/admin/api/2024-01";
@@ -317,6 +336,7 @@ async function handleCreateLabel(request, env) {
       order_number: order.name || String(order.order_number || orderId),
       request_label: true,
       shipment: { id: chosen.id },
+      sender_address: senderAddressId ? Number(senderAddressId) : undefined,
       total_order_value: order.total_price,
       total_order_value_currency: order.currency,
     },
