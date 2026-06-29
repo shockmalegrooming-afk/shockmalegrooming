@@ -280,6 +280,24 @@ async function handleCreateLabel(request, env) {
   const m = address.match(/\s(\d+\S*)$/);
   if (m) { house = m[1]; address = address.slice(0, m.index).trim(); }
 
+  const auth = "Basic " + btoa(`${env.SENDCLOUD_PUBLIC_KEY}:${env.SENDCLOUD_SECRET_KEY}`);
+
+  // Scegli automaticamente un metodo di spedizione a domicilio per il paese di destinazione
+  const pkgWeight = parseFloat(weight || "1") || 1;
+  const dest = (sa.country_code || "IT").toUpperCase();
+  const smResp = await fetch("https://panel.sendcloud.sc/api/v2/shipping_methods", { headers: { Authorization: auth } });
+  const smJson = await smResp.json().catch(() => ({}));
+  const methods = smJson.shipping_methods || [];
+  const home = methods.filter((mm) =>
+    (mm.service_point_input === "none" || !mm.service_point_input) &&
+    (mm.countries || []).some((c) => (c.iso_2 || "").toUpperCase() === dest)
+  );
+  const fit = home.find((mm) => pkgWeight >= parseFloat(mm.min_weight || "0") && pkgWeight <= parseFloat(mm.max_weight || "1000"));
+  const chosen = fit || home[0] || methods[0];
+  if (!chosen) {
+    return labelJson({ error: "Nessun metodo di spedizione disponibile su Sendcloud. Attiva un corriere (es. Poste) con consegna a domicilio." }, 502);
+  }
+
   const parcelBody = {
     parcel: {
       name: `${sa.first_name || ""} ${sa.last_name || ""}`.trim() || order.email,
@@ -298,13 +316,12 @@ async function handleCreateLabel(request, env) {
       height: String(height || ""),
       order_number: order.name || String(order.order_number || orderId),
       request_label: true,
-      apply_shipping_rules: true,
+      shipment: { id: chosen.id },
       total_order_value: order.total_price,
       total_order_value_currency: order.currency,
     },
   };
 
-  const auth = "Basic " + btoa(`${env.SENDCLOUD_PUBLIC_KEY}:${env.SENDCLOUD_SECRET_KEY}`);
   const scResp = await fetch("https://panel.sendcloud.sc/api/v2/parcels", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: auth },
