@@ -54,7 +54,7 @@ video::-webkit-media-controls,video::-webkit-media-controls-enclosure,video::-we
 .car-btn{position:absolute;top:50%;transform:translateY(-50%);z-index:20;background:rgba(12,10,8,0.75);border:1px solid rgba(255,255,255,0.18);color:#fff;width:46px;height:46px;border-radius:50%;cursor:pointer;display:flex!important;align-items:center;justify-content:center;font-size:1.5rem;transition:all 0.2s;backdrop-filter:blur(10px);line-height:1;padding:0;flex-shrink:0}
 .car-btn:hover{background:rgba(255,255,255,0.13)!important;border-color:rgba(255,255,255,0.4)!important}
 .car-btn.prev{left:-23px}.car-btn.next{right:-23px}
-@media(max-width:900px){.car-btn{display:none!important}}
+@media(max-width:900px){.car-btn{width:40px;height:40px;font-size:1.3rem}.car-btn.prev{left:6px}.car-btn.next{right:6px}}.car-btn.car-hide{opacity:0;visibility:hidden;pointer-events:none}
 /* Newsletter mobile prettier */
 @media(max-width:600px){
 .nl-form{flex-direction:column!important;border-radius:20px!important;border:none!important;background:transparent!important;overflow:visible!important;padding:0!important;max-width:100%!important}
@@ -172,15 +172,7 @@ function setupCarousel(){
   var cont=document.getElementById('prod-carousel');
   if(!cont||cont._aw)return;
   cont._aw=1;
-  // Desktop: make cards exactly 1/3 wide so 3 fill the view
-  if(window.innerWidth>900){
-    var cards=cont.children;
-    for(var i=0;i<cards.length;i++){
-      cards[i].style.minWidth='calc((100% - 40px) / 3)';
-      cards[i].style.maxWidth='calc((100% - 40px) / 3)';
-      cards[i].style.flexShrink='0';
-    }
-  }
+  // Card sizing handled by component CSS; we only add arrows
   // Wrap in relative container
   var wrap=document.createElement('div');
   wrap.className='carousel-wrap';
@@ -190,6 +182,7 @@ function setupCarousel(){
   var par=wrap.parentNode;
   if(par&&par.style){par.style.overflow='visible';}
   // Create arrows
+  var prevBtn,nextBtn;
   function mkBtn(dir){
     var b=document.createElement('button');
     b.className='car-btn '+(dir<0?'prev':'next');
@@ -199,8 +192,18 @@ function setupCarousel(){
       cont.scrollBy({left:dir*cont.clientWidth,behavior:'smooth'});
     });
     wrap.appendChild(b);
+    if(dir<0)prevBtn=b;else nextBtn=b;
   }
   mkBtn(-1);mkBtn(1);
+  function updateArrows(){
+    var atStart=cont.scrollLeft<=2;
+    var atEnd=cont.scrollLeft+cont.clientWidth>=cont.scrollWidth-2;
+    if(prevBtn)prevBtn.classList.toggle('car-hide',atStart);
+    if(nextBtn)nextBtn.classList.toggle('car-hide',atEnd);
+  }
+  cont.addEventListener('scroll',updateArrows,{passive:true});
+  window.addEventListener('resize',updateArrows);
+  updateArrows();setTimeout(updateArrows,400);
 }
 window.addEventListener('load',function(){
   var n=0,id=setInterval(function(){setupCarousel();if(++n>=15)clearInterval(id);},300);
