@@ -41,6 +41,10 @@ export default {
       return handleSenderAddresses(request, env);
     }
 
+    if (pathname === "/api/test-sendcloud") {
+      return handleTestSendcloud(request, env);
+    }
+
     return env.ASSETS.fetch(request);
   },
 };
@@ -250,6 +254,37 @@ function labelJson(obj, status) {
     status: status || 200,
     headers: { "Content-Type": "application/json", ...CORS },
   });
+}
+
+// Test connessione Sendcloud (verifica chiavi, sedi mittente e metodi) — NON crea etichette, gratis
+async function handleTestSendcloud(request, env) {
+  const pwd = request.headers.get("X-Admin-Password");
+  if (!pwd || pwd !== env.ADMIN_PASSWORD) return labelJson({ ok: false, error: "Non autorizzato" }, 401);
+  if (!env.SENDCLOUD_PUBLIC_KEY || !env.SENDCLOUD_SECRET_KEY) {
+    return labelJson({ ok: false, error: "Chiavi Sendcloud non configurate su Cloudflare (SENDCLOUD_PUBLIC_KEY / SENDCLOUD_SECRET_KEY)" });
+  }
+  const auth = "Basic " + btoa(`${env.SENDCLOUD_PUBLIC_KEY}:${env.SENDCLOUD_SECRET_KEY}`);
+  try {
+    const aR = await fetch("https://panel.sendcloud.sc/api/v2/user/addresses/sender", { headers: { Authorization: auth } });
+    if (aR.status === 401 || aR.status === 403) {
+      return labelJson({ ok: false, error: "Chiavi API non valide (autenticazione Sendcloud fallita)" });
+    }
+    const aJ = await aR.json().catch(() => ({}));
+    const addresses = (aJ.sender_addresses || []).map((a) => [a.company_name || a.contact_name, a.city].filter(Boolean).join(" "));
+    const mR = await fetch("https://panel.sendcloud.sc/api/v2/shipping_methods", { headers: { Authorization: auth } });
+    const mJ = await mR.json().catch(() => ({}));
+    const methods = mJ.shipping_methods || [];
+    const itHome = methods.filter((m) => (m.service_point_input === "none" || !m.service_point_input) && (m.countries || []).some((c) => (c.iso_2 || "").toUpperCase() === "IT"));
+    return labelJson({
+      ok: true,
+      addresses,
+      methods_total: methods.length,
+      methods_it_home: itHome.length,
+      sample: itHome.slice(0, 3).map((m) => m.name),
+    });
+  } catch (e) {
+    return labelJson({ ok: false, error: String(e).slice(0, 200) });
+  }
 }
 
 // Elenco indirizzi mittente configurati su Sendcloud (per scegliere la sede di partenza)
