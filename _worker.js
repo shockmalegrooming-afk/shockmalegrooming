@@ -45,6 +45,10 @@ export default {
       return handleTestSendcloud(request, env);
     }
 
+    if (pathname === "/api/manual-tracking") {
+      return handleManualTracking(request, env);
+    }
+
     return env.ASSETS.fetch(request);
   },
 };
@@ -254,6 +258,43 @@ function labelJson(obj, status) {
     status: status || 200,
     headers: { "Content-Type": "application/json", ...CORS },
   });
+}
+
+// Salva un tracking inserito a mano: crea la fulfillment su Shopify e avvisa il cliente
+async function handleManualTracking(request, env) {
+  if (request.method !== "POST") return new Response("Method not allowed", { status: 405, headers: CORS });
+  const pwd = request.headers.get("X-Admin-Password");
+  if (!pwd || pwd !== env.ADMIN_PASSWORD) return labelJson({ error: "Non autorizzato" }, 401);
+  const { orderId, tracking, carrier, url } = await request.json().catch(() => ({}));
+  if (!orderId || !tracking) return labelJson({ error: "Inserisci il codice di tracciamento" }, 400);
+
+  const base = "https://shock-male-grooming.myshopify.com/admin/api/2024-01";
+  const shHeaders = { "Content-Type": "application/json", "X-Shopify-Access-Token": env.SHOPIFY_ADMIN_TOKEN };
+
+  const foResp = await fetch(`${base}/orders/${orderId}/fulfillment_orders.json`, { headers: shHeaders });
+  const { fulfillment_orders } = await foResp.json();
+  const open = (fulfillment_orders || []).filter((f) => f.status === "open" || f.status === "in_progress");
+  const use = open.length ? open : (fulfillment_orders || []);
+  if (!use.length) return labelJson({ error: "Nessun articolo da evadere (ordine già spedito o annullato)" }, 400);
+
+  const fResp = await fetch(`${base}/fulfillments.json`, {
+    method: "POST",
+    headers: shHeaders,
+    body: JSON.stringify({
+      fulfillment: {
+        line_items_by_fulfillment_order: use.map((f) => ({ fulfillment_order_id: f.id })),
+        tracking_info: { number: tracking, url: url || "", company: carrier || "" },
+        notify_customer: true,
+      },
+    }),
+  });
+  if (!fResp.ok) {
+    const t = await fResp.text();
+    let msg = t.slice(0, 200);
+    try { const j = JSON.parse(t); if (j.errors) msg = typeof j.errors === "string" ? j.errors : JSON.stringify(j.errors); } catch (e) {}
+    return labelJson({ error: "Shopify: " + msg }, 502);
+  }
+  return labelJson({ success: true });
 }
 
 // Test connessione Sendcloud (verifica chiavi, sedi mittente e metodi) — NON crea etichette, gratis
