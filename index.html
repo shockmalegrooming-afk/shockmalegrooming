@@ -44,7 +44,7 @@
 }
 #bundle-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:24px}
 @media(max-width:768px){#bundle-grid{display:flex!important;overflow-x:auto!important;scroll-snap-type:x mandatory!important;-webkit-overflow-scrolling:touch!important;gap:12px!important;padding-bottom:8px!important}#bundle-grid>div{min-width:80vw!important;max-width:80vw!important;scroll-snap-align:start!important;flex-shrink:0!important}}
-video::-webkit-media-controls,video::-webkit-media-controls-enclosure,video::-webkit-media-controls-panel,video::-webkit-media-controls-play-button,video::-webkit-media-controls-start-playback-button,video::-webkit-media-controls-overlay-play-button{display:none!important;opacity:0!important;-webkit-appearance:none!important}video{pointer-events:none!important}
+video::-webkit-media-controls,video::-webkit-media-controls-enclosure,video::-webkit-media-controls-panel,video::-webkit-media-controls-container,video::-webkit-media-controls-play-button,video::-webkit-media-controls-start-playback-button,video::-webkit-media-controls-overlay-play-button,video::-webkit-media-controls-overlay-enclosure{display:none!important;opacity:0!important;-webkit-appearance:none!important;-webkit-transform:scale(0)!important}video{pointer-events:none!important}
 /* Remove dash line before lbl labels */
 .lbl::before,.lbl-dark::before{display:none!important}
 /* Nicer scroll-hint */
@@ -209,4 +209,4 @@ window.addEventListener('load',function(){
   var n=0,id=setInterval(function(){setupCarousel();if(++n>=15)clearInterval(id);},300);
 });
 })();</script>
-</body></html>
+<script>(function(){function kick(){var vs=document.getElementsByTagName("video");for(var i=0;i<vs.length;i++){var v=vs[i];try{v.muted=!0;v.setAttribute("muted","");v.playsInline=!0;v.setAttribute("playsinline","");v.removeAttribute("controls");var p=v.play();if(p&&p.catch)p.catch(function(){})}catch(e){}}}window.addEventListener("load",function(){kick();setTimeout(kick,500);setTimeout(kick,1500)});["touchstart","touchend","click","scroll","pointerdown","keydown"].forEach(function(ev){document.addEventListener(ev,kick,{passive:!0})});document.addEventListener("visibilitychange",function(){document.hidden||kick()})})();</script></body></html>
