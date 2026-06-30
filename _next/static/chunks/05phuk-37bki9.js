@@ -31,6 +31,7 @@
     query getCustomer($token: String!) {
       customer(customerAccessToken: $token) {
         id firstName lastName email phone
+        metafield(namespace: "loyalty", key: "points") { value }
         orders(first: 10, sortKey: PROCESSED_AT, reverse: true) {
           edges {
             node {
