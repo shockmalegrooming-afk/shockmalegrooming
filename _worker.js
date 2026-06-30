@@ -49,6 +49,10 @@ export default {
       return handleManualTracking(request, env);
     }
 
+    if (pathname === "/api/punti") {
+      return handlePunti(request, env);
+    }
+
     return env.ASSETS.fetch(request);
   },
 };
@@ -523,4 +527,179 @@ async function handleBarbieri(request, env) {
     status: ok ? 200 : 500,
     headers: { "Content-Type": "application/json", ...CORS },
   });
+}
+
+async function handlePunti(request, env) {
+  const base = "https://shock-male-grooming.myshopify.com";
+  const adminHeaders = {
+    "Content-Type": "application/json",
+    "X-Shopify-Access-Token": env.SHOPIFY_ADMIN_TOKEN,
+  };
+
+  // Resolve customer ID from Storefront access token
+  async function getCustomerIdFromToken(token) {
+    const res = await fetch(`${base}/api/2024-01/graphql.json`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Shopify-Storefront-Access-Token": "0a215f25881fcbcbd0a0a7d8405b7ff6",
+      },
+      body: JSON.stringify({
+        query: `query { customer(customerAccessToken: "${token}") { id } }`,
+      }),
+    });
+    const data = await res.json();
+    const gid = data?.data?.customer?.id;
+    if (!gid) return null;
+    return gid.replace("gid://shopify/Customer/", "");
+  }
+
+  // Read a metafield value for a customer
+  async function getMeta(customerId, key) {
+    const res = await fetch(
+      `${base}/admin/api/2024-01/customers/${customerId}/metafields.json?namespace=loyalty`,
+      { headers: adminHeaders }
+    );
+    const data = await res.json();
+    return (data.metafields || []).find(m => m.key === key) || null;
+  }
+
+  // Upsert a metafield
+  async function setMeta(customerId, key, value, type, existingId) {
+    if (existingId) {
+      await fetch(`${base}/admin/api/2024-01/metafields/${existingId}.json`, {
+        method: "PUT",
+        headers: adminHeaders,
+        body: JSON.stringify({ metafield: { id: existingId, value: String(value), type } }),
+      });
+    } else {
+      const res = await fetch(
+        `${base}/admin/api/2024-01/customers/${customerId}/metafields.json`,
+        {
+          method: "POST",
+          headers: adminHeaders,
+          body: JSON.stringify({ metafield: { namespace: "loyalty", key, value: String(value), type } }),
+        }
+      );
+      return (await res.json()).metafield?.id;
+    }
+  }
+
+  // Check which stored codes are still unused via Admin API
+  async function filterActiveCodes(codes) {
+    const active = [];
+    for (const c of codes) {
+      try {
+        if (!c.price_rule_id) { active.push(c); continue; }
+        const r = await fetch(
+          `${base}/admin/api/2024-01/price_rules/${c.price_rule_id}/discount_codes.json`,
+          { headers: adminHeaders }
+        );
+        const d = await r.json();
+        const dc = (d.discount_codes || []).find(x => x.code === c.code);
+        if (!dc || dc.usage_count === 0) active.push(c);
+      } catch { active.push(c); }
+    }
+    return active;
+  }
+
+  if (request.method === "GET") {
+    const url = new URL(request.url);
+    const token = url.searchParams.get("token");
+    if (!token) return new Response(JSON.stringify({ error: "Token mancante" }), { status: 400, headers: { "Content-Type": "application/json", ...CORS } });
+
+    const customerId = await getCustomerIdFromToken(token);
+    if (!customerId) return new Response(JSON.stringify({ error: "Token non valido" }), { status: 401, headers: { "Content-Type": "application/json", ...CORS } });
+
+    const [ptsMeta, codesMeta] = await Promise.all([
+      getMeta(customerId, "points"),
+      getMeta(customerId, "codes"),
+    ]);
+
+    const points = ptsMeta ? parseInt(ptsMeta.value) || 0 : 0;
+    let codes = [];
+    if (codesMeta) {
+      try { codes = JSON.parse(codesMeta.value) || []; } catch {}
+    }
+    codes = await filterActiveCodes(codes);
+    // Update codes metafield if some were removed
+    if (codesMeta && codes.length < (JSON.parse(codesMeta.value || "[]").length)) {
+      await setMeta(customerId, "codes", JSON.stringify(codes), "json", codesMeta.id);
+    }
+
+    return new Response(JSON.stringify({ points, codes }), {
+      status: 200,
+      headers: { "Content-Type": "application/json", ...CORS },
+    });
+  }
+
+  if (request.method === "POST") {
+    const { token, points: ptsToRedeem, amount } = await request.json().catch(() => ({}));
+    if (!token || !ptsToRedeem || !amount) {
+      return new Response(JSON.stringify({ error: "Parametri mancanti" }), { status: 400, headers: { "Content-Type": "application/json", ...CORS } });
+    }
+
+    const customerId = await getCustomerIdFromToken(token);
+    if (!customerId) return new Response(JSON.stringify({ error: "Token non valido" }), { status: 401, headers: { "Content-Type": "application/json", ...CORS } });
+
+    const [ptsMeta, codesMeta] = await Promise.all([
+      getMeta(customerId, "points"),
+      getMeta(customerId, "codes"),
+    ]);
+
+    const currentPts = ptsMeta ? parseInt(ptsMeta.value) || 0 : 0;
+    if (currentPts < ptsToRedeem) {
+      return new Response(JSON.stringify({ error: "Punti insufficienti" }), { status: 400, headers: { "Content-Type": "application/json", ...CORS } });
+    }
+
+    // Create Shopify price rule + discount code
+    const code = "SHOCK" + Math.random().toString(36).slice(2, 8).toUpperCase();
+    const prRes = await fetch(`${base}/admin/api/2024-01/price_rules.json`, {
+      method: "POST",
+      headers: adminHeaders,
+      body: JSON.stringify({
+        price_rule: {
+          title: code,
+          target_type: "line_item",
+          target_selection: "all",
+          allocation_method: "across",
+          value_type: "fixed_amount",
+          value: String(-amount),
+          customer_selection: "all",
+          once_per_customer: true,
+          usage_limit: 1,
+          starts_at: new Date().toISOString(),
+        },
+      }),
+    });
+    const prData = await prRes.json();
+    const priceRuleId = prData.price_rule?.id;
+
+    if (!priceRuleId) {
+      return new Response(JSON.stringify({ error: "Errore creazione sconto" }), { status: 500, headers: { "Content-Type": "application/json", ...CORS } });
+    }
+
+    await fetch(`${base}/admin/api/2024-01/price_rules/${priceRuleId}/discount_codes.json`, {
+      method: "POST",
+      headers: adminHeaders,
+      body: JSON.stringify({ discount_code: { code } }),
+    });
+
+    // Deduct points
+    const newPts = currentPts - ptsToRedeem;
+    await setMeta(customerId, "points", String(newPts), "number_integer", ptsMeta?.id);
+
+    // Add code to stored codes
+    let codes = [];
+    if (codesMeta) { try { codes = JSON.parse(codesMeta.value) || []; } catch {} }
+    codes.push({ code, amount, price_rule_id: priceRuleId, created_at: new Date().toISOString() });
+    await setMeta(customerId, "codes", JSON.stringify(codes), "json", codesMeta?.id);
+
+    return new Response(JSON.stringify({ points: newPts, codes, newCode: code }), {
+      status: 200,
+      headers: { "Content-Type": "application/json", ...CORS },
+    });
+  }
+
+  return new Response("Method not allowed", { status: 405, headers: CORS });
 }
