@@ -380,70 +380,108 @@ async function handleCreateLabel(request, env) {
   if (m) { house = m[1]; address = address.slice(0, m.index).trim(); }
 
   const auth = "Basic " + btoa(`${env.SENDCLOUD_PUBLIC_KEY}:${env.SENDCLOUD_SECRET_KEY}`);
+  const v3Headers = { "Content-Type": "application/json", Authorization: auth };
 
-  // Scegli automaticamente un metodo di spedizione a domicilio per il paese di destinazione
-  const pkgWeight = parseFloat(weight || "1") || 1;
-  const dest = (sa.country_code || "IT").toUpperCase();
-  const smResp = await fetch("https://panel.sendcloud.sc/api/v2/shipping_methods", { headers: { Authorization: auth } });
-  const smJson = await smResp.json().catch(() => ({}));
-  const methods = smJson.shipping_methods || [];
-  const home = methods.filter((mm) =>
-    (mm.service_point_input === "none" || !mm.service_point_input) &&
-    (mm.countries || []).some((c) => (c.iso_2 || "").toUpperCase() === dest)
-  );
-  const fit = home.find((mm) => pkgWeight >= parseFloat(mm.min_weight || "0") && pkgWeight <= parseFloat(mm.max_weight || "1000"));
-  const chosen = fit || home[0] || methods[0];
-  if (!chosen) {
-    return labelJson({ error: "Nessun metodo di spedizione disponibile su Sendcloud. Attiva un corriere (es. Poste) con consegna a domicilio." }, 502);
+  // Costruisci l'indirizzo mittente (from_address) dalle sedi configurate su Sendcloud
+  let from = null;
+  try {
+    const addrResp = await fetch("https://panel.sendcloud.sc/api/v2/user/addresses/sender", { headers: { Authorization: auth } });
+    const addrJson = await addrResp.json().catch(() => ({}));
+    const senders = addrJson.sender_addresses || [];
+    const picked = (senderAddressId && senders.find((a) => String(a.id) === String(senderAddressId))) || senders[0];
+    if (picked) {
+      from = {
+        name: picked.contact_name || picked.company_name || "SHOCK",
+        company_name: picked.company_name || "",
+        address_line_1: picked.street || "",
+        house_number: String(picked.house_number || ""),
+        postal_code: picked.postal_code || "",
+        city: picked.city || "",
+        country_code: (picked.country || "IT").toUpperCase(),
+        phone_number: picked.telephone || "",
+        email: picked.email || "",
+      };
+    }
+  } catch (e) {}
+  if (!from) {
+    return labelJson({ error: "Nessun indirizzo mittente configurato su Sendcloud. Aggiungi una sede di partenza nel pannello Sendcloud." }, 502);
   }
 
-  const parcelBody = {
-    parcel: {
-      name: `${sa.first_name || ""} ${sa.last_name || ""}`.trim() || order.email,
-      company_name: sa.company || "",
-      address: address || sa.address1 || "",
-      house_number: house,
-      address_2: sa.address2 || "",
-      city: sa.city || "",
-      postal_code: sa.zip || "",
-      country: sa.country_code || "IT",
-      telephone: sa.phone || order.phone || "",
-      email: order.email || "",
-      weight: String(weight || "1"),
-      length: String(length || ""),
-      width: String(width || ""),
-      height: String(height || ""),
-      order_number: order.name || String(order.order_number || orderId),
-      request_label: true,
-      shipment: { id: chosen.id },
-      sender_address: senderAddressId ? Number(senderAddressId) : undefined,
-      total_order_value: order.total_price,
-      total_order_value_currency: order.currency,
-    },
+  const dest = (sa.country_code || "IT").toUpperCase();
+  const to = {
+    name: `${sa.first_name || ""} ${sa.last_name || ""}`.trim() || order.email || "Cliente",
+    company_name: sa.company || "",
+    address_line_1: address || sa.address1 || "",
+    house_number: house,
+    address_line_2: sa.address2 || "",
+    postal_code: sa.zip || "",
+    city: sa.city || "",
+    country_code: dest,
+    phone_number: sa.phone || order.phone || "",
+    email: order.email || "",
   };
 
-  const scResp = await fetch("https://panel.sendcloud.sc/api/v2/parcels", {
+  const parcels = [{
+    weight: { value: String(parseFloat(weight || "1") || 1), unit: "kg" },
+    ...(length && width && height ? { dimensions: { length: String(length), width: String(width), height: String(height), unit: "cm" } } : {}),
+  }];
+
+  // 1) Trova le opzioni di spedizione a domicilio disponibili per la tratta (API v3)
+  const soResp = await fetch("https://panel.sendcloud.sc/api/v3/shipping-options", {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: auth },
-    body: JSON.stringify(parcelBody),
+    headers: v3Headers,
+    body: JSON.stringify({ from_address: from, to_address: to, parcels }),
+  });
+  const soText = await soResp.text();
+  let soJson = {};
+  try { soJson = JSON.parse(soText); } catch (e) {}
+  if (!soResp.ok) {
+    const msg = (soJson.error && (soJson.error.message || soJson.error.detail)) || soText.slice(0, 300) || "Errore opzioni Sendcloud";
+    return labelJson({ error: "Sendcloud (opzioni): " + msg }, 502);
+  }
+  const options = soJson.data || [];
+  const home = options.filter((o) => o.functionalities && o.functionalities.last_mile === "home_delivery");
+  const chosen = home[0] || options[0];
+  if (!chosen) {
+    return labelJson({ error: "Nessun metodo di spedizione a domicilio disponibile su Sendcloud per questa destinazione. Attiva un corriere (es. Poste/BRT) con consegna a domicilio." }, 502);
+  }
+  const shipWithProps = { shipping_option_code: chosen.code };
+  if (chosen.contract && chosen.contract.id != null) shipWithProps.contract_id = chosen.contract.id;
+
+  // 2) Crea e annuncia la spedizione con etichetta (API v3)
+  const shipBody = {
+    label_details: { mime_type: "application/pdf", dpi: 72 },
+    from_address: from,
+    to_address: to,
+    ship_with: { type: "shipping_option_code", properties: shipWithProps },
+    order_number: order.name || String(order.order_number || orderId),
+    total_order_price: { currency: order.currency || "EUR", value: String(order.total_price || "0") },
+    parcels,
+  };
+  const scResp = await fetch("https://panel.sendcloud.sc/api/v3/shipments/announce", {
+    method: "POST",
+    headers: v3Headers,
+    body: JSON.stringify(shipBody),
   });
   const scText = await scResp.text();
   let scJson = {};
   try { scJson = JSON.parse(scText); } catch (e) {}
   if (!scResp.ok) {
-    const msg = (scJson.error && scJson.error.message) || scText.slice(0, 300) || "Errore Sendcloud";
+    let msg = scText.slice(0, 300);
+    if (scJson.error) msg = scJson.error.message || scJson.error.detail || msg;
+    else if (Array.isArray(scJson.errors) && scJson.errors.length) msg = scJson.errors.map((x) => x.detail || x.message || x.title).filter(Boolean).join("; ");
     return labelJson({ error: "Sendcloud: " + msg }, 502);
   }
-  const parcel = scJson.parcel || {};
+  const parcel = (scJson.data && scJson.data.parcels && scJson.data.parcels[0]) || {};
   const tracking = parcel.tracking_number || "";
   const trackingUrl = parcel.tracking_url || "";
-  const carrier = (parcel.carrier && parcel.carrier.code) || "";
+  const carrier = (chosen.carrier && chosen.carrier.code) || "";
 
-  // 2) Scarica il PDF dell'etichetta
+  // 3) Scarica il PDF dell'etichetta
   let labelB64 = "";
-  const labelUrl = parcel.label && ((parcel.label.normal_printer && parcel.label.normal_printer[0]) || parcel.label.label_printer);
-  if (labelUrl) {
-    const lResp = await fetch(labelUrl, { headers: { Authorization: auth } });
+  const labelDoc = (parcel.documents || []).find((d) => d.type === "label") || (parcel.documents || [])[0];
+  if (labelDoc && labelDoc.link) {
+    const lResp = await fetch(labelDoc.link, { headers: { Authorization: auth, Accept: "application/pdf" } });
     if (lResp.ok) labelB64 = abToBase64(await lResp.arrayBuffer());
   }
 
