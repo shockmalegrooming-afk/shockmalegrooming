@@ -191,9 +191,7 @@ function setupCarousel(){
     b.className='car-btn '+(dir<0?'prev':'next');
     b.innerHTML=dir<0?'‹':'›';
     b.setAttribute('aria-label',dir<0?'Precedenti':'Successivi');
-    b.addEventListener('click',function(){
-      cont.scrollBy({left:dir*cont.clientWidth,behavior:'smooth'});
-    });
+    b.addEventListener('click',function(){var cr=cont.getBoundingClientRect(),kids=cont.children,target=null,kk;for(kk=0;kk<kids.length;kk++){var pos=kids[kk].getBoundingClientRect().left-cr.left;if(dir>0){if(pos>4){target=kids[kk];break;}}else{if(pos<-4){target=kids[kk];}}}if(target){var left=target.getBoundingClientRect().left-cr.left+cont.scrollLeft;cont.scrollTo({left:left,behavior:'smooth'});}else{cont.scrollTo({left:dir>0?cont.scrollWidth:0,behavior:'smooth'});}});
     wrap.appendChild(b);
     if(dir<0)prevBtn=b;else nextBtn=b;
   }
