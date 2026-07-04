@@ -71,8 +71,6 @@
   <div class="sh-in">
     <a class="sh-logo" href="/" aria-label="SHOCK Male Grooming"><img src="/logo.png" alt="Shock Male Grooming"/></a>
     <nav class="sh-nav">
-      <a class="lnk" href="/#prodotti">Home</a>
-      <a class="lnk" href="/punti">Punti</a>
       <a class="icon-btn" href="/" aria-label="Account">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"></circle><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"></path></svg>
       </a>
@@ -107,6 +105,7 @@
   </div>
 </footer>
 
+<script src="/shock-content.js"></script>
 <script src="/shock-shop.js"></script>
 <script>
 (function(){
@@ -138,7 +137,7 @@
       '<div class="thumb">'+badge+(img?'<img src="'+img+'" alt="'+(p.featuredImage&&p.featuredImage.altText||p.title)+'" loading="lazy">':'')+'</div>'+
       '<div class="body">'+
         '<h3>'+p.title+'</h3>'+
-        (p.productType?'<p class="ptype">'+p.productType+'</p>':'<p class="ptype"></p>')+
+        (function(){var c=window.ShockContent&&window.ShockContent[p.handle];var t=(c&&c.tagline)||p.productType||"";return '<p class="ptype">'+t+'</p>';})()+
         '<div class="row">'+
           '<div class="price">'+(onSale?'<span class="was">'+money(cmp.amount,cmp.currencyCode)+'</span>':'')+money(price.amount,price.currencyCode)+'</div>'+
           '<button class="add" '+(avail?'':'disabled')+' aria-label="Aggiungi al carrello">+</button>'+

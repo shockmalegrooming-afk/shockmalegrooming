@@ -91,8 +91,6 @@
   <div class="sh-in">
     <a class="sh-logo" href="/" aria-label="SHOCK Male Grooming"><img src="/logo.png" alt="Shock Male Grooming"/></a>
     <nav class="sh-nav">
-      <a class="lnk" href="/prodotti">Prodotti</a>
-      <a class="lnk" href="/punti">Punti</a>
       <a class="icon-btn" href="/" aria-label="Account">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"></circle><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"></path></svg>
       </a>
@@ -113,6 +111,7 @@
   <div style="margin-top:10px"><a href="/privacy">Privacy</a><a href="/termini">Termini</a><a href="/cookie">Cookie</a></div>
 </footer>
 
+<script src="/shock-content.js"></script>
 <script src="/shock-shop.js"></script>
 <script>
 (function(){
@@ -162,6 +161,9 @@
     var hasOptions=!(p.options.length===1&&p.options[0].name==="Title"&&p.options[0].values.length===1&&p.options[0].values[0]==="Default Title");
     var sel={}; p.options.forEach(function(o){sel[o.name]=o.values[0];});
     var rv=reviews(p.handle);
+    var cont=(window.ShockContent&&window.ShockContent[p.handle])||null;
+    var descHtml=(cont&&cont.html)||p.descriptionHtml||"";
+    var topLabel=(cont&&cont.tagline)||p.productType||"";
 
     function currentVariant(){
       return variants.find(function(v){return v.selectedOptions.every(function(so){return sel[so.name]===so.value;});})||variants[0];
@@ -179,11 +181,11 @@
           (imgs.length>1?'<div class="gal-thumbs" id="thumbs"></div>':'')+
         '</div>'+
         '<div class="info">'+
-          (p.productType?'<p class="ptype">'+p.productType+'</p>':'')+
+          (topLabel?'<p class="ptype">'+topLabel+'</p>':'')+
           '<h1>'+p.title+'</h1>'+
           '<div class="rate"><span class="stars">'+starStr(Math.round(rv.avg))+'</span><span>'+rv.avg.toFixed(1)+' · '+rv.count+' recensioni</span></div>'+
           '<div class="price" id="price"></div>'+
-          '<div class="desc">'+(p.descriptionHtml||"")+'</div>'+
+          '<div class="desc">'+descHtml+'</div>'+
           '<div id="opts"></div>'+
           '<div class="stock" id="stock"></div>'+
           '<div class="buybar">'+
