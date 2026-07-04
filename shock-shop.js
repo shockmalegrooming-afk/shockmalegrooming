@@ -159,7 +159,7 @@
     var head =
       '<div style="display:flex;align-items:center;justify-content:space-between;padding:22px 22px 16px;border-bottom:1px solid rgba(255,255,255,.08)">' +
       '<span style="font-family:var(--font-brand);font-weight:700;font-size:1.1rem;letter-spacing:.04em;text-transform:uppercase">Carrello</span>' +
-      '<button data-cart-close style="background:none;border:none;color:rgba(255,255,255,.5);font-size:1.5rem;cursor:pointer;line-height:1">&times;</button></div>';
+      '<button data-cart-close aria-label="Chiudi" style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);color:#f0ece5;font-size:1.35rem;cursor:pointer;line-height:1;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center">&times;</button></div>';
 
     var body;
     if (!lines.length) {
@@ -188,7 +188,7 @@
             '<span style="min-width:20px;text-align:center;font-size:.82rem">' + n.quantity + "</span>" +
             '<button data-line-inc="' + n.id + '" style="background:none;border:none;color:#f0ece5;width:26px;height:26px;cursor:pointer;font-size:1rem">+</button>' +
             "</div>" +
-            '<button data-line-rm="' + n.id + '" style="background:none;border:none;color:rgba(255,255,255,.3);font-size:.72rem;cursor:pointer;margin-left:auto">Rimuovi</button>' +
+            '<button data-line-rm="' + n.id + '" style="background:none;border:none;color:#e0685e;font-size:.76rem;font-weight:600;cursor:pointer;margin-left:auto;text-decoration:underline;text-underline-offset:2px">Rimuovi</button>' +
             "</div></div>" +
             '<div style="font-weight:700;font-size:.85rem;white-space:nowrap">' + money(m.price.amount * n.quantity, m.price.currencyCode) + "</div>" +
             "</div>"
