@@ -49,12 +49,14 @@
     if (!id) { state.cart = null; emit(); return Promise.resolve(null); }
     return sfetch("query($id:ID!){cart(id:$id){" + CART_FIELDS + "}}", { id: id })
       .then(function (d) {
-        state.cart = d.cart;
-        if (!d.cart) setCartId(null); // carrello scaduto/completato
+        // d.cart null = carrello completato/scaduto: solo in questo caso lo svuotiamo
+        if (d.cart) { state.cart = d.cart; }
+        else { state.cart = null; setCartId(null); }
         emit();
         return d.cart;
       })
-      .catch(function () { state.cart = null; emit(); return null; });
+      // errore di rete transitorio: NON svuotare, mantieni lo stato attuale
+      .catch(function () { emit(); return state.cart; });
   }
 
   function createCart(variantId, qty) {
@@ -225,7 +227,11 @@
     return null;
   }
 
-  function open() { buildDrawer(); requestAnimationFrame(function () { overlay.style.opacity = "1"; overlay.style.pointerEvents = "auto"; drawer.style.transform = "translateX(0)"; }); }
+  function open() {
+    buildDrawer();
+    if (!state.cart && getCartId()) loadCart(); // assicura il contenuto aggiornato
+    requestAnimationFrame(function () { overlay.style.opacity = "1"; overlay.style.pointerEvents = "auto"; drawer.style.transform = "translateX(0)"; });
+  }
   function close() { if (!drawer) return; overlay.style.opacity = "0"; overlay.style.pointerEvents = "none"; drawer.style.transform = "translateX(100%)"; }
 
   function flash(msg) {
@@ -241,11 +247,20 @@
 
   function init() {
     buildDrawer();
-    document.querySelectorAll("[data-cart-open]").forEach(function (b) {
-      b.addEventListener("click", function (e) { e.preventDefault(); open(); });
+    // Delega globale: apre il carrello da QUALSIASI elemento carrello, anche
+    // quelli renderizzati/re-renderizzati da React (home) dopo l'hydration.
+    document.addEventListener("click", function (e) {
+      var t = e.target && e.target.closest && e.target.closest('[data-cart-open],[aria-label="Carrello"]');
+      if (t) { e.preventDefault(); open(); }
     });
+    // Mantiene il badge corretto anche se React ri-renderizza la navbar (scroll).
+    window.addEventListener("scroll", function () {
+      if (badgeRaf) return; badgeRaf = requestAnimationFrame(function () { badgeRaf = 0; updateBadge(); });
+    }, { passive: true });
+    setInterval(updateBadge, 1500);
     loadCart();
   }
+  var badgeRaf = 0;
 
   window.ShockShop = {
     sfetch: sfetch, money: money, add: add, open: open, close: close, loadCart: loadCart,

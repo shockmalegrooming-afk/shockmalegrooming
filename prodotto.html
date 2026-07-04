@@ -27,8 +27,12 @@
   .sh-nav a.lnk:hover{color:#f0ece5}
   .icon-btn{background:none;border:none;cursor:pointer;padding:6px;display:flex;align-items:center;color:#f0ece5;position:relative}
   .cart-badge{position:absolute;top:-4px;right:-4px;background:#c9a84c;color:#0a0908;font-size:.62rem;font-weight:800;min-width:17px;height:17px;border-radius:100px;display:none;align-items:center;justify-content:center;padding:0 4px;font-family:var(--font-b,sans-serif)}
-  .crumb{padding:22px 0 0;color:rgba(240,236,229,.4);font-size:.8rem}
-  .crumb a{text-decoration:none}.crumb a:hover{color:#f0ece5}
+  .crumb{padding:20px 0 0}
+  .crumb a{display:inline-flex;align-items:center;gap:7px;text-decoration:none;color:#f0ece5;font-size:.82rem;font-weight:700;border:1px solid rgba(201,168,76,.5);padding:10px 20px;border-radius:100px;transition:all .2s}
+  .crumb a:hover{background:#c9a84c;color:#0a0908;border-color:#c9a84c}
+  .scrollcue{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:20px;padding:13px;border-top:1px solid rgba(255,255,255,.08);color:#c9a84c;font-size:.82rem;font-weight:600;cursor:pointer;background:none;border-left:none;border-right:none;border-bottom:none;width:100%;font-family:var(--font-b,sans-serif)}
+  .scrollcue .arr{display:inline-block;animation:bob 1.3s ease-in-out infinite}
+  @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(4px)}}
   .pd{display:grid;grid-template-columns:1.05fr 1fr;gap:54px;padding:26px 0 60px;align-items:start}
   /* gallery */
   .gal-main{aspect-ratio:1/1;background:#141312;border-radius:18px;overflow:hidden;border:1px solid rgba(255,255,255,.06)}
@@ -185,13 +189,14 @@
           '<h1>'+p.title+'</h1>'+
           '<div class="rate"><span class="stars">'+starStr(Math.round(rv.avg))+'</span><span>'+rv.avg.toFixed(1)+' · '+rv.count+' recensioni</span></div>'+
           '<div class="price" id="price"></div>'+
-          '<div class="desc">'+descHtml+'</div>'+
           '<div id="opts"></div>'+
           '<div class="stock" id="stock"></div>'+
           '<div class="buybar">'+
             '<div class="qty"><button id="qminus">−</button><span id="qval">1</span><button id="qplus">+</button></div>'+
             '<button class="buy" id="buy">Aggiungi al carrello</button>'+
           '</div>'+
+          '<button class="scrollcue" id="scrollcue"><span class="arr">↓</span> Scorri per descrizione e recensioni</button>'+
+          '<div class="desc">'+descHtml+'</div>'+
           '<div class="perks">'+
             '<div><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>Formule professionali made in Italy</div>'+
             '<div><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><path d="M16 8h4l3 3v5h-7z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>Spedizione in 3-5 giorni lavorativi</div>'+
@@ -204,6 +209,8 @@
     var qval=document.getElementById("qval");
     document.getElementById("qminus").onclick=function(){if(qty>1){qty--;qval.textContent=qty;}};
     document.getElementById("qplus").onclick=function(){qty++;qval.textContent=qty;};
+    var sc=document.getElementById("scrollcue");
+    if(sc)sc.onclick=function(){revEl.scrollIntoView({behavior:"smooth",block:"start"});};
 
     // thumbnails
     if(imgs.length>1){
