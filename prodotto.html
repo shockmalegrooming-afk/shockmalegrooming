@@ -54,6 +54,11 @@
   .price .off{background:rgba(201,168,76,.15);color:#c9a84c;font-size:.72rem;font-weight:700;padding:4px 10px;border-radius:100px}
   .desc{color:rgba(240,236,229,.72);line-height:1.65;font-size:.95rem;margin-bottom:24px}
   .desc p{margin:0 0 12px}
+  .desc strong{display:block;color:#f0ece5;font-family:var(--font-brand);font-weight:700;letter-spacing:.01em;text-transform:uppercase;font-size:1.02rem;margin-bottom:10px;line-height:1.2}
+  .desc ul{list-style:none;margin:0 0 14px;padding:0;display:flex;flex-direction:column;gap:7px}
+  .desc li{position:relative;padding-left:24px;color:rgba(240,236,229,.72)}
+  .desc li:before{content:"✓";position:absolute;left:0;top:0;color:#c9a84c;font-weight:800}
+  .desc em{color:rgba(240,236,229,.5);font-style:normal;font-size:.85rem;text-transform:uppercase;letter-spacing:.04em}
   .opt{margin-bottom:20px}
   .opt-label{font-size:.78rem;color:rgba(240,236,229,.5);margin-bottom:9px;text-transform:uppercase;letter-spacing:.05em}
   .opt-vals{display:flex;gap:9px;flex-wrap:wrap}
@@ -87,7 +92,31 @@
   .loadwrap{padding:120px 20px;text-align:center;color:rgba(240,236,229,.4)}
   footer.sf{border-top:1px solid rgba(255,255,255,.06);padding:34px 0;text-align:center;color:rgba(240,236,229,.3);font-size:.78rem}
   footer.sf a{color:rgba(240,236,229,.5);text-decoration:none;margin:0 10px}
-  @media(max-width:900px){.pd{grid-template-columns:1fr;gap:26px}.gal-sticky{position:static}.rev-grid{grid-template-columns:1fr}.wrap,.sh-in,.reviews{padding-left:18px;padding-right:18px}.sh-nav a.lnk{display:none}}
+  /* Tablet e sotto: colonna singola, immagine centrata, recensioni 2 colonne */
+  @media(max-width:1000px){
+    .pd{grid-template-columns:1fr;gap:28px;padding:22px 0 50px}
+    .gal-sticky{position:static;max-width:440px;margin:0 auto;width:100%}
+    .info{max-width:560px;margin:0 auto;width:100%}
+    .rev-grid{grid-template-columns:1fr 1fr}
+    .sh-nav a.lnk{display:none}
+  }
+  /* Telefono */
+  @media(max-width:640px){
+    .wrap,.sh-in,.reviews{padding-left:16px;padding-right:16px}
+    .sh-in{padding-top:13px;padding-bottom:13px}
+    .sh-logo img{height:32px}
+    .pd{gap:20px;padding:14px 0 40px}
+    .gal-main{border-radius:14px}
+    .gal-thumbs button{width:56px;height:56px}
+    .pd h1{font-size:clamp(1.65rem,7vw,2.2rem);margin-bottom:12px}
+    .price .now{font-size:1.5rem}
+    .buy{padding:15px;font-size:.88rem}
+    .qty button{width:40px;height:50px}
+    .rev-grid{grid-template-columns:1fr}
+    .reviews h2{font-size:1.35rem}
+    .rev{padding:16px}
+    .icon-btn{padding:8px}
+  }
 </style>
 </head>
 <body>
