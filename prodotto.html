@@ -193,7 +193,12 @@
     var sel={}; p.options.forEach(function(o){sel[o.name]=o.values[0];});
     var rv=reviews(p.handle);
     var cont=(window.ShockContent&&window.ShockContent[p.handle])||null;
-    var descHtml=(cont&&cont.html)||p.descriptionHtml||"";
+    // Se hai modificato la descrizione dall'admin (Shopify), mostra QUELLA.
+    // Finché è ancora quella vecchia/generica, mostra il testo SHOCK curato.
+    var shopDesc=p.descriptionHtml||"";
+    var shopClean=shopDesc.replace(/<[^>]+>/g," ");
+    var shopIsGeneric=shopClean.indexOf("MODELLA I TUOI CAPELLI")>=0||shopClean.trim().length<40;
+    var descHtml=(!shopIsGeneric)?shopDesc:((cont&&cont.html)||shopDesc);
     var topLabel=(cont&&cont.tagline)||p.productType||"";
 
     function currentVariant(){
