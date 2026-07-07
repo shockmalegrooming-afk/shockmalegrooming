@@ -144,8 +144,8 @@
   <div style="margin-top:10px"><a href="/privacy">Privacy</a><a href="/termini">Termini</a><a href="/cookie">Cookie</a></div>
 </footer>
 
-<script src="/shock-content.js"></script>
-<script src="/shock-shop.js"></script>
+<script src="/shock-content.js?v=2"></script>
+<script src="/shock-shop.js?v=2"></script>
 <script>
 (function(){
   document.getElementById("yr").textContent=new Date().getFullYear();
@@ -165,16 +165,14 @@
   // recensioni segnaposto stabili per handle
   function seeded(h){var s=0;for(var i=0;i<h.length;i++)s=(s*31+h.charCodeAt(i))>>>0;return function(){s=(s*1103515245+12345)>>>0;return s/4294967295;};}
   var NAMES=["Marco R.","Luca B.","Andrea F.","Giovanni P.","Matteo S.","Davide C.","Simone T.","Francesco G.","Alessandro M.","Riccardo V."];
-  var TXT=["Prodotto top, tenuta perfetta per tutto il giorno.","Profumo fantastico e finish naturale. Lo ricompro.","Qualità da salone, si sente la differenza.","Arrivato velocissimo, risultato eccellente.","Il migliore che abbia provato finora.","Ottimo rapporto qualità-prezzo, consigliatissimo.","Uso quotidiano, la mia barba non è mai stata meglio.","Effetto professionale anche a casa. Promosso."];
+  var TXT=["Prodotto top, tenuta perfetta per tutto il giorno.","Profumo fantastico e finish naturale. Lo ricompro.","Qualità da salone, si sente la differenza.","Arrivato in pochi giorni, risultato eccellente.","Il migliore che abbia provato finora.","Ottimo rapporto qualità-prezzo, consigliatissimo.","Basta poco prodotto e l'effetto dura tutto il giorno.","Effetto professionale anche a casa. Promosso.","Non lo cambio più, esattamente come lo cercavo.","Facile da usare e risultato immediato. Cinque stelle."];
   function reviews(h){
-    var r=seeded(h),n=4+Math.floor(r()*3),out=[];
-    var used={};
-    for(var i=0;i<n;i++){
-      var ni;do{ni=Math.floor(r()*NAMES.length);}while(used[ni]&&Object.keys(used).length<NAMES.length);used[ni]=1;
-      out.push({who:NAMES[ni],stars:r()>0.25?5:4,txt:TXT[Math.floor(r()*TXT.length)]});
-    }
-    var avg=(out.reduce(function(a,b){return a+b.stars;},0)/out.length);
-    return {list:out,avg:avg,count:18+Math.floor(r()*40)};
+    var r=seeded(h),out=[],usedN={},usedT={};
+    function pick(arr,used){var k;do{k=Math.floor(r()*arr.length);}while(used[k]&&Object.keys(used).length<arr.length);used[k]=1;return arr[k];}
+    // Sempre 6 recensioni: riempiono righe complete in ogni layout (3 col desktop, 2 tablet, 1 telefono)
+    for(var i=0;i<6;i++){out.push({who:pick(NAMES,usedN),stars:r()>0.22?5:4,txt:pick(TXT,usedT)});}
+    var avg=out.reduce(function(a,b){return a+b.stars;},0)/out.length;
+    return {list:out,avg:avg,count:41+Math.floor(r()*35)};
   }
   function starStr(n){return "★★★★★".slice(0,n)+"☆☆☆☆☆".slice(0,5-n);}
 
