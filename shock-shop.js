@@ -247,12 +247,16 @@
 
   function init() {
     buildDrawer();
-    // Delega globale: apre il carrello da QUALSIASI elemento carrello, anche
-    // quelli renderizzati/re-renderizzati da React (home) dopo l'hydration.
-    document.addEventListener("click", function (e) {
-      var t = e.target && e.target.closest && e.target.closest('[data-cart-open],[aria-label="Carrello"]');
-      if (t) { e.preventDefault(); open(); }
-    });
+    // Delega globale in fase di CAPTURE: apre il carrello da QUALSIASI elemento
+    // carrello (anche quelli di React dopo l'hydration) e prima che qualsiasi
+    // altro handler possa fermare la propagazione dell'evento.
+    var openHandler = function (e) {
+      var el0 = e.target;
+      var t = el0 && el0.closest && el0.closest('[data-cart-open],[aria-label="Carrello"]');
+      if (t) { e.preventDefault(); e.stopPropagation(); open(); }
+    };
+    document.addEventListener("click", openHandler, true);
+    document.addEventListener("touchend", openHandler, true);
     // Mantiene il badge corretto anche se React ri-renderizza la navbar (scroll).
     window.addEventListener("scroll", function () {
       if (badgeRaf) return; badgeRaf = requestAnimationFrame(function () { badgeRaf = 0; updateBadge(); });
