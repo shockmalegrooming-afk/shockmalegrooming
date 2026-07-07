@@ -183,17 +183,19 @@
             (img ? '<img src="' + img + '" alt="" style="width:100%;height:100%;object-fit:cover">' : "") +
             "</div>" +
             '<div style="flex:1;min-width:0">' +
-            '<p style="font-weight:600;font-size:.85rem;line-height:1.2">' + m.product.title + "</p>" +
-            variantLabel +
-            '<div style="display:flex;align-items:center;gap:10px;margin-top:8px">' +
-            '<div style="display:flex;align-items:center;border:1px solid rgba(255,255,255,.15);border-radius:100px">' +
-            '<button data-line-dec="' + n.id + '" style="background:none;border:none;color:#f0ece5;width:26px;height:26px;cursor:pointer;font-size:1rem">−</button>' +
-            '<span style="min-width:20px;text-align:center;font-size:.82rem">' + n.quantity + "</span>" +
-            '<button data-line-inc="' + n.id + '" style="background:none;border:none;color:#f0ece5;width:26px;height:26px;cursor:pointer;font-size:1rem">+</button>' +
+            '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">' +
+            '<p style="font-weight:600;font-size:.85rem;line-height:1.25">' + m.product.title + "</p>" +
+            '<button data-line-rm="' + n.id + '" aria-label="Rimuovi" title="Rimuovi" style="background:none;border:none;cursor:pointer;padding:2px;flex-shrink:0;line-height:0;color:rgba(255,255,255,.3)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"></path><path d="M10 11v6M14 11v6"></path></svg></button>' +
             "</div>" +
-            '<button data-line-rm="' + n.id + '" style="background:none;border:none;color:#e0685e;font-size:.76rem;font-weight:600;cursor:pointer;margin-left:auto;text-decoration:underline;text-underline-offset:2px">Rimuovi</button>' +
+            variantLabel +
+            '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:10px">' +
+            '<div style="display:flex;align-items:center;border:1px solid rgba(255,255,255,.15);border-radius:100px">' +
+            '<button data-line-dec="' + n.id + '" style="background:none;border:none;color:#f0ece5;width:28px;height:28px;cursor:pointer;font-size:1rem">−</button>' +
+            '<span style="min-width:22px;text-align:center;font-size:.82rem">' + n.quantity + "</span>" +
+            '<button data-line-inc="' + n.id + '" style="background:none;border:none;color:#f0ece5;width:28px;height:28px;cursor:pointer;font-size:1rem">+</button>' +
+            "</div>" +
+            '<div style="font-weight:700;font-size:.88rem;white-space:nowrap">' + money(m.price.amount * n.quantity, m.price.currencyCode) + "</div>" +
             "</div></div>" +
-            '<div style="font-weight:700;font-size:.85rem;white-space:nowrap">' + money(m.price.amount * n.quantity, m.price.currencyCode) + "</div>" +
             "</div>"
           );
         })
@@ -208,7 +210,7 @@
         '<button data-cart-checkout style="width:100%;background:' + ACCENT + ';color:#0a0908;border:none;border-radius:100px;padding:15px;font-weight:700;font-size:.9rem;letter-spacing:.03em;cursor:pointer;font-family:var(--font-brand);text-transform:uppercase">Vai al checkout</button>' +
         "</div>";
     }
-    drawer.innerHTML = head + body;
+    drawer.innerHTML = '<style>#shock-cart-drawer [data-line-rm]{transition:color .2s}#shock-cart-drawer [data-line-rm]:hover{color:#e0685e}#shock-cart-drawer [data-cart-checkout]:hover{filter:brightness(1.08)}</style>' + head + body;
 
     drawer.querySelector("[data-cart-close]").addEventListener("click", close);
     drawer.querySelectorAll("[data-line-inc]").forEach(function (b) {
