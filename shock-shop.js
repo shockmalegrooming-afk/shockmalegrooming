@@ -134,21 +134,24 @@
 
   var drawer, overlay;
   function buildDrawer() {
-    if (drawer) return;
+    if (!drawer) {
     overlay = el("div", { id: "shock-cart-overlay" });
     overlay.style.cssText =
-      "position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9998;opacity:0;pointer-events:none;transition:opacity .3s;backdrop-filter:blur(2px)";
+      "position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:2147483646;opacity:0;pointer-events:none;transition:opacity .3s;backdrop-filter:blur(2px)";
     overlay.addEventListener("click", close);
 
     drawer = el("aside", { id: "shock-cart-drawer", "aria-label": "Carrello" });
     drawer.style.cssText =
-      "position:fixed;top:0;right:0;height:100%;width:min(420px,92vw);background:#141312;z-index:9999;" +
+      "position:fixed;top:0;right:0;height:100%;width:min(420px,92vw);background:#141312;z-index:2147483647;" +
       "transform:translateX(100%);transition:transform .32s cubic-bezier(.4,0,.2,1);display:flex;flex-direction:column;" +
       "box-shadow:-20px 0 60px rgba(0,0,0,.5);color:#f0ece5;font-family:var(--font-b,system-ui,sans-serif)";
-    document.body.appendChild(overlay);
-    document.body.appendChild(drawer);
     onChange(renderDrawer);
     renderDrawer();
+    }
+    // (Ri)attacca al DOM: su App Router React può rimuovere durante l'hydration
+    // i nodi aggiunti a <body> prima dell'idratazione. Riappendiamo ad ogni apertura.
+    if (!overlay.isConnected) document.body.appendChild(overlay);
+    if (!drawer.isConnected) document.body.appendChild(drawer);
   }
 
   function renderDrawer() {
