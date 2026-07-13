@@ -20,14 +20,14 @@
         customerUserErrors { message }
       }
     }
-  `,{email:e,password:t}),o=r?.data?.customerAccessTokenCreate;if(o?.customerUserErrors?.length)throw Error(o.customerUserErrors[0].message);let n=o?.customerAccessToken?.accessToken;if(n){localStorage.setItem("shopify_token",n),localStorage.setItem("shopify_email",e);l(n).then(c=>{if(c?.firstName)localStorage.setItem("shopify_name",c.firstName)}).catch(()=>{})}return n}async function c(e,t,r,o,n){let s=await a(`
+  `,{email:e,password:t}),o=r?.data?.customerAccessTokenCreate;if(o?.customerUserErrors?.length)throw Error(o.customerUserErrors[0].message);let n=o?.customerAccessToken?.accessToken;if(n){localStorage.setItem("shopify_token",n),localStorage.setItem("shopify_email",e);l(n).then(c=>{if(c?.firstName)localStorage.setItem("shopify_name",c.firstName)}).catch(()=>{})}return n}function _ph(x){if(!x)return;var d=String(x).replace(/[^\d+]/g,"");if(0===d.indexOf("00"))d="+"+d.slice(2);if("+"!==d[0]){if(/^3\d{8,9}$/.test(d))d="+39"+d;else if(/^39\d{9,10}$/.test(d))d="+"+d;else if(/^0\d{8,10}$/.test(d))d="+39"+d;else d="+"+d}return/^\+\d{8,15}$/.test(d)?d:void 0}async function c(e,t,r,o,n){let M=`
     mutation register($input: CustomerCreateInput!) {
       customerCreate(input: $input) {
         customer { id email }
         customerUserErrors { message }
       }
     }
-  `,{input:{firstName:e,lastName:t,email:r,password:o,phone:n||void 0,acceptsMarketing:!1}}),i=s?.data?.customerCreate;if(i?.customerUserErrors?.length)throw Error(i.customerUserErrors[0].message);await u(r,o)}async function l(e){let t=await a(`
+  `;async function T(ph){let s=await a(M,{input:{firstName:e,lastName:t,email:r,password:o,phone:ph,acceptsMarketing:!1}}),i=s?.data?.customerCreate;if(i?.customerUserErrors?.length)throw Error(i.customerUserErrors[0].message);}let ph=_ph(n);try{await T(ph)}catch(err){if(ph&&/phone|telefono/i.test(err.message||"")){await T(void 0)}else{throw err}}await u(r,o)}async function l(e){let t=await a(`
     query getCustomer($token: String!) {
       customer(customerAccessToken: $token) {
         id firstName lastName email phone

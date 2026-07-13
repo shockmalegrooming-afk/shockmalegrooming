@@ -257,7 +257,11 @@
     // altro handler possa fermare la propagazione dell'evento.
     var openHandler = function (e) {
       var el0 = e.target;
-      var t = el0 && el0.closest && el0.closest('[data-cart-open],[aria-label="Carrello"]');
+      if (!el0 || !el0.closest) return;
+      // MAI intercettare i click dentro il pannello/overlay del carrello:
+      // i suoi bottoni (chiudi, +/-, rimuovi, checkout) hanno i propri handler.
+      if (el0.closest("#shock-cart-drawer,#shock-cart-overlay")) return;
+      var t = el0.closest('[data-cart-open],[aria-label="Carrello"]');
       if (t) { e.preventDefault(); e.stopPropagation(); open(); }
     };
     document.addEventListener("click", openHandler, true);
