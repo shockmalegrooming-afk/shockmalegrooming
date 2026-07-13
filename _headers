@@ -33,3 +33,15 @@
 
 /prodotto.html
   Cache-Control: no-cache, no-store, must-revalidate
+
+/recupera-password
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/recupera-password.html
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/reset-password
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/reset-password.html
+  Cache-Control: no-cache, no-store, must-revalidate
