@@ -176,12 +176,17 @@
   }
   function starStr(n){return "★★★★★".slice(0,n)+"☆☆☆☆☆".slice(0,5-n);}
 
+  var RETRY_BTN='<br><button onclick="location.reload()" style="margin-top:16px;background:#c9a84c;color:#0a0908;border:none;border-radius:100px;padding:10px 24px;font-weight:700;cursor:pointer;font-family:inherit">Riprova</button>';
   window.ShockShop.sfetch(Q,{handle:handle}).then(function(d){
     var p=d.product;
     if(!p){main.innerHTML='<div class="loadwrap">Prodotto non trovato. <a href="/prodotti" style="color:#c9a84c">Vedi tutti i prodotti</a></div>';return;}
-    render(p);
+    try{ render(p); }
+    catch(err){
+      console.error("Errore rendering prodotto:",err);
+      main.innerHTML='<div class="loadwrap">Si è verificato un problema nel mostrare il prodotto.<br><span style="opacity:.6;font-size:.75rem">'+((err&&err.message)||"")+'</span>'+RETRY_BTN+'</div>';
+    }
   }).catch(function(err){
-    main.innerHTML='<div class="loadwrap">Errore nel caricamento.<br><span style="opacity:.6;font-size:.75rem">'+(err.message||"")+'</span></div>';
+    main.innerHTML='<div class="loadwrap">Errore nel caricamento.<br><span style="opacity:.6;font-size:.75rem">'+(err.message||"")+'</span>'+RETRY_BTN+'</div>';
   });
 
   function render(p){
