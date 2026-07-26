@@ -57,7 +57,7 @@ video::-webkit-media-controls,video::-webkit-media-controls-enclosure,video::-we
 .car-btn{position:absolute;top:50%;transform:translateY(-50%);z-index:20;background:#fff;border:none;color:#0a0908;width:46px;height:46px;border-radius:50%;cursor:pointer;display:flex!important;align-items:center;justify-content:center;font-size:1.6rem;font-weight:700;transition:all 0.2s;box-shadow:0 3px 14px rgba(0,0,0,0.45);line-height:1;padding:0;flex-shrink:0}
 .car-btn:hover{background:#eee!important}
 .car-btn.prev{left:-23px}.car-btn.next{right:-23px}
-@media(max-width:900px){.car-btn{display:flex!important;width:42px;height:42px;font-size:1.5rem;top:calc(50vw - 30px);transform:none}.car-btn.prev{left:12px}.car-btn.next{right:12px}}.car-btn.car-hide{opacity:0;visibility:hidden;pointer-events:none}/* Product card image shorter on mobile so the whole card fits */@media(max-width:768px){.pcard-img{height:300px!important}}
+@media(max-width:900px){.car-btn{display:flex!important;width:42px;height:42px;font-size:1.5rem;top:129px;transform:none}.car-btn.prev{left:12px}.car-btn.next{right:12px}}.car-btn.car-hide{opacity:0;visibility:hidden;pointer-events:none}/* Product card image shorter on mobile so the whole card fits */@media(max-width:768px){.pcard-img{height:300px!important}}
 /* Newsletter mobile prettier */
 @media(max-width:600px){
 .nl-form{flex-direction:column!important;border-radius:20px!important;border:none!important;background:transparent!important;overflow:visible!important;padding:0!important;max-width:100%!important}
@@ -114,8 +114,8 @@ main>section:first-of-type{opacity:0}
   window.__buyBundle=function(variantId,title){
     sfetch('mutation($v:ID!){cartCreate(input:{lines:[{merchandiseId:$v,quantity:1}]}){cart{checkoutUrl}}}',{v:variantId}).then(function(data){
       var url=data&&data.data&&data.data.cartCreate&&data.data.cartCreate.cart&&data.data.cartCreate.cart.checkoutUrl;
-      if(url)window.location.href=url;else alert('Errore. Riprova.');
-    }).catch(function(){alert('Errore. Riprova.');});
+      if(url)window.location.href=url;else if(window.ShockShop)window.ShockShop.flash('Errore. Riprova.');else alert('Errore. Riprova.');
+    }).catch(function(){if(window.ShockShop)window.ShockShop.flash('Errore. Riprova.');else alert('Errore. Riprova.');});
   };
 })();
 </script><script>(function(){
