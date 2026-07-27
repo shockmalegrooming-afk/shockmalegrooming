@@ -201,7 +201,11 @@ function stepScroll(dir){
   var cs=getComputedStyle(cont);
   var gap=parseFloat(cs.columnGap||cs.gap)||20;
   var card=cont.children[0];
-  var step=(card?card.getBoundingClientRect().width:cont.clientWidth)+gap;
+  var cw=card?card.getBoundingClientRect().width:cont.clientWidth;
+  // Quante card stanno in una schermata: 3 su desktop, 1 su mobile.
+  // Ricavato dal layout, cosi' non serve inseguire i breakpoint.
+  var per=Math.max(1,Math.round((cont.clientWidth+gap)/(cw+gap)));
+  var step=per*(cw+gap);
   var max=cont.scrollWidth-cont.clientWidth;
   var from=cont.scrollLeft;
   var to=Math.max(0,Math.min(max,from+dir*step));
@@ -213,7 +217,7 @@ function stepScroll(dir){
   function restore(){if(done)return;done=true;cont.style.scrollSnapType=prevSnap||'';}
   cont.style.scrollSnapType='none';
   if(reduce){cont.scrollLeft=to;restore();updateArrows();return;}
-  var dur=560,t0=0,delta=to-from;
+  var dur=620,t0=0,delta=to-from;
   function ease(t){return t<0.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;}
   function frame(ts){
     if(!t0)t0=ts;
