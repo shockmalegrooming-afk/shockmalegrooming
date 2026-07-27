@@ -186,12 +186,24 @@ function setupCarousel(){
   if(par&&par.style){par.style.overflow='visible';}
   // Create arrows
   var prevBtn,nextBtn;
+  function stepScroll(dir){
+    var cs=getComputedStyle(cont);
+    var gap=parseFloat(cs.columnGap||cs.gap)||20;
+    var card=cont.children[0];
+    var step=(card?card.getBoundingClientRect().width:cont.clientWidth)+gap;
+    var prevSnap=cont.style.scrollSnapType;
+    cont.style.scrollSnapType='none';
+    function restore(){cont.style.scrollSnapType=prevSnap||'';cont.removeEventListener('scrollend',restore);}
+    cont.addEventListener('scrollend',restore,{once:true});
+    setTimeout(restore,700);
+    cont.scrollBy({left:dir*step,behavior:'smooth'});
+  }
   function mkBtn(dir){
     var b=document.createElement('button');
     b.className='car-btn '+(dir<0?'prev':'next');
     b.innerHTML=dir<0?'‹':'›';
     b.setAttribute('aria-label',dir<0?'Precedenti':'Successivi');
-    b.addEventListener('click',function(){var cr=cont.getBoundingClientRect(),kids=cont.children,cw=cr.width,target=null,kk;if(dir>0){for(kk=0;kk<kids.length;kk++){var pos=kids[kk].getBoundingClientRect().left-cr.left;if(pos>=cw-4){target=kids[kk];break;}}}else{for(kk=kids.length-1;kk>=0;kk--){var pos=kids[kk].getBoundingClientRect().left-cr.left;if(pos<-4){target=kids[kk];break;}}}if(target){target.scrollIntoView({behavior:'smooth',inline:dir>0?'end':'start',block:'nearest'});}else{cont.scrollTo({left:dir>0?cont.scrollWidth:0,behavior:'smooth'});}});
+    b.addEventListener('click',function(){stepScroll(dir);});
     wrap.appendChild(b);
     if(dir<0)prevBtn=b;else nextBtn=b;
   }
