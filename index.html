@@ -52,6 +52,15 @@ video::-webkit-media-controls,video::-webkit-media-controls-enclosure,video::-we
 .lbl::before,.lbl-dark::before{display:none!important}
 /* Nicer scroll-hint */
 .scroll-hint{justify-content:center!important;font-size:0.68rem!important;letter-spacing:0.22em!important;color:rgba(255,255,255,0.3)!important;margin-bottom:20px!important;text-transform:uppercase!important;gap:0!important;user-select:none}
+/* --- HERO: niente mutazioni del DOM prima dell'hydration ---
+   React renderizza i cerchi decorativi sfocati e la seconda colonna del
+   grid; noi non li vogliamo. Nasconderli via CSS invece che via JS
+   evita di toccare il DOM prima che React abbia fatto l'hydration
+   (era una delle cause del React error #418) e continua a funzionare
+   anche quando React ricostruisce la sezione. Il selettore e' esatto
+   per non colpire l'overlay del video, che ha anche background e z-index. */
+main>section:first-of-type>div[style*="pointer-events:none"]:not([style*="background"]){display:none!important}
+main>section:first-of-type>.r-1col>div:nth-child(n+2){display:none!important}
 /* Carousel arrow buttons */
 .carousel-wrap{position:relative;overflow:visible!important}
 .car-btn{position:absolute;top:50%;transform:translateY(-50%);z-index:20;background:#fff;border:none;color:#0a0908;width:46px;height:46px;border-radius:50%;cursor:pointer;display:flex!important;align-items:center;justify-content:center;font-size:1.6rem;font-weight:700;transition:all 0.2s;box-shadow:0 3px 14px rgba(0,0,0,0.45);line-height:1;padding:0;flex-shrink:0}
@@ -173,7 +182,10 @@ function fixHero(){
     sec.style.opacity='1';
   }
 }
-fixHero();document.addEventListener('DOMContentLoaded',fixHero);window.addEventListener('load',function(){fixHero();var n=0,id=setInterval(function(){fixHero();if(++n>=20)clearInterval(id);},250);var sec=document.querySelector('main section');if(sec&&window.MutationObserver){new MutationObserver(function(){if(!sec.querySelector('video'))fixHero();}).observe(sec,{childList:true,subtree:true});}});
+// Niente fixHero() sincrono ne' su DOMContentLoaded: iniettare il video
+// prima dell'hydration di React e' cio' che genera il mismatch #418.
+// I cerchi decorativi ora li nasconde la CSS, quindi non serve anticipare.
+window.addEventListener('load',function(){fixHero();var n=0,id=setInterval(function(){fixHero();if(++n>=20)clearInterval(id);},250);var sec=document.querySelector('main section');if(sec&&window.MutationObserver){new MutationObserver(function(){if(!sec.querySelector('video'))fixHero();}).observe(sec,{childList:true,subtree:true});}});
 })();</script><script>(function(){
 // Le frecce non devono MAI tenere un riferimento fisso al carosello:
 // se React rifa' l'hydration (o ri-renderizza) sostituisce il nodo
