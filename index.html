@@ -171,55 +171,73 @@ function fixHero(){
 }
 fixHero();document.addEventListener('DOMContentLoaded',fixHero);window.addEventListener('load',function(){fixHero();var n=0,id=setInterval(function(){fixHero();if(++n>=20)clearInterval(id);},250);var sec=document.querySelector('main section');if(sec&&window.MutationObserver){new MutationObserver(function(){if(!sec.querySelector('video'))fixHero();}).observe(sec,{childList:true,subtree:true});}});
 })();</script><script>(function(){
-function setupCarousel(){
-  var cont=document.getElementById('prod-carousel');
-  if(!cont||cont._aw)return;
-  cont._aw=1;
-  // Card sizing handled by component CSS; we only add arrows
-  // Wrap in relative container
-  var wrap=document.createElement('div');
+// Le frecce non devono MAI tenere un riferimento fisso al carosello:
+// se React rifa' l'hydration (o ri-renderizza) sostituisce il nodo
+// #prod-carousel, e un riferimento vecchio punterebbe a un elemento
+// staccato dalla pagina -> il click sembra non fare niente.
+var wrap=null,prevBtn=null,nextBtn=null,pfill=null;
+function live(){return document.getElementById('prod-carousel');}
+function stepScroll(dir){
+  var cont=live();if(!cont)return;
+  var cs=getComputedStyle(cont);
+  var gap=parseFloat(cs.columnGap||cs.gap)||20;
+  var card=cont.children[0];
+  var step=(card?card.getBoundingClientRect().width:cont.clientWidth)+gap;
+  var prevSnap=cont.style.scrollSnapType,done=false;
+  function restore(){if(done)return;done=true;cont.style.scrollSnapType=prevSnap||'';}
+  cont.addEventListener('scrollend',restore,{once:true});
+  setTimeout(restore,700);
+  cont.scrollBy({left:dir*step,behavior:'smooth'});
+}
+function updateArrows(){
+  var cont=live();if(!cont)return;
+  if(prevBtn)prevBtn.classList.toggle('car-hide',cont.scrollLeft<=2);
+  if(nextBtn)nextBtn.classList.toggle('car-hide',cont.scrollLeft+cont.clientWidth>=cont.scrollWidth-2);
+  if(pfill){var ms=cont.scrollWidth-cont.clientWidth;pfill.style.width=(ms>0?Math.min(100,Math.max(0,cont.scrollLeft/ms*100)):100)+'%';}
+}
+function mkBtn(dir){
+  var b=document.createElement('button');
+  b.className='car-btn '+(dir<0?'prev':'next');
+  b.setAttribute('type','button');
+  b.innerHTML=dir<0?'\u2039':'\u203a';
+  b.setAttribute('aria-label',dir<0?'Precedenti':'Successivi');
+  b.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();stepScroll(dir);});
+  return b;
+}
+function build(cont){
+  wrap=document.createElement('div');
   wrap.className='carousel-wrap';
   cont.parentNode.insertBefore(wrap,cont);
   wrap.appendChild(cont);
-  // Make sure the wrapper doesn't clip arrows
-  var par=wrap.parentNode;
-  if(par&&par.style){par.style.overflow='visible';}
-  // Create arrows
-  var prevBtn,nextBtn;
-  function stepScroll(dir){
-    var cs=getComputedStyle(cont);
-    var gap=parseFloat(cs.columnGap||cs.gap)||20;
-    var card=cont.children[0];
-    var step=(card?card.getBoundingClientRect().width:cont.clientWidth)+gap;
-    var prevSnap=cont.style.scrollSnapType;
-    cont.style.scrollSnapType='none';
-    function restore(){cont.style.scrollSnapType=prevSnap||'';cont.removeEventListener('scrollend',restore);}
-    cont.addEventListener('scrollend',restore,{once:true});
-    setTimeout(restore,700);
-    cont.scrollBy({left:dir*step,behavior:'smooth'});
-  }
-  function mkBtn(dir){
-    var b=document.createElement('button');
-    b.className='car-btn '+(dir<0?'prev':'next');
-    b.innerHTML=dir<0?'‹':'›';
-    b.setAttribute('aria-label',dir<0?'Precedenti':'Successivi');
-    b.addEventListener('click',function(){stepScroll(dir);});
-    wrap.appendChild(b);
-    if(dir<0)prevBtn=b;else nextBtn=b;
-  }
-  mkBtn(-1);mkBtn(1);var pbar=document.createElement('div');pbar.className='car-progress';var pfill=document.createElement('div');pfill.className='car-progress-fill';pbar.appendChild(pfill);wrap.appendChild(pbar);
-  function updateArrows(){
-    var atStart=cont.scrollLeft<=2;
-    var atEnd=cont.scrollLeft+cont.clientWidth>=cont.scrollWidth-2;
-    if(prevBtn)prevBtn.classList.toggle('car-hide',atStart);
-    if(nextBtn)nextBtn.classList.toggle('car-hide',atEnd);var maxScroll=cont.scrollWidth-cont.clientWidth;var pct=maxScroll>0?Math.min(100,Math.max(0,cont.scrollLeft/maxScroll*100)):100;pfill.style.width=pct+'%';
-  }
-  cont.addEventListener('scroll',updateArrows,{passive:true});
-  window.addEventListener('resize',updateArrows);
-  updateArrows();setTimeout(updateArrows,400);
+  var par=wrap.parentNode;if(par&&par.style){par.style.overflow='visible';}
+  prevBtn=mkBtn(-1);nextBtn=mkBtn(1);
+  wrap.appendChild(prevBtn);wrap.appendChild(nextBtn);
+  var pbar=document.createElement('div');pbar.className='car-progress';
+  pfill=document.createElement('div');pfill.className='car-progress-fill';
+  pbar.appendChild(pfill);wrap.appendChild(pbar);
 }
+// sync() e' idempotente: ricostruisce se React ha buttato via il wrapper,
+// e ri-aggancia il carosello se React lo ha rimpiazzato con un nodo nuovo.
+function sync(){
+  var cont=live();if(!cont)return;
+  if(!wrap||!document.contains(wrap)){build(cont);}
+  else if(cont.parentNode!==wrap){wrap.insertBefore(cont,wrap.firstChild);}
+  if(!cont._carBound){cont._carBound=1;cont.addEventListener('scroll',updateArrows,{passive:true});}
+  updateArrows();
+}
+window.addEventListener('resize',updateArrows);
+// Si parte solo dopo il load: toccare il DOM prima che React abbia fatto
+// l'hydration e' proprio cio' che genera il mismatch.
 window.addEventListener('load',function(){
-  var n=0,id=setInterval(function(){setupCarousel();if(++n>=15)clearInterval(id);},300);
+  sync();setTimeout(sync,400);
+  var n=0,id=setInterval(function(){sync();if(++n>=40)clearInterval(id);},400);
+  if(window.MutationObserver){
+    var pend=0;
+    new MutationObserver(function(){
+      if(pend)return;pend=1;
+      setTimeout(function(){pend=0;sync();},120);
+    }).observe(document.body,{childList:true,subtree:true});
+  }
 });
 })();</script>
 <script>(function(){function kick(){var vs=document.getElementsByTagName("video");for(var i=0;i<vs.length;i++){var v=vs[i];try{v.muted=!0;v.setAttribute("muted","");v.playsInline=!0;v.setAttribute("playsinline","");v.removeAttribute("controls");var p=v.play();if(p&&p.catch)p.catch(function(){})}catch(e){}}}window.addEventListener("load",function(){kick();setTimeout(kick,500);setTimeout(kick,1500)});["touchstart","touchend","click","scroll","pointerdown","keydown"].forEach(function(ev){document.addEventListener(ev,kick,{passive:!0})});document.addEventListener("visibilitychange",function(){document.hidden||kick()})})();</script><script src="/shock-shop.js?v=5"></script></body></html>
