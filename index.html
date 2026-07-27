@@ -177,17 +177,36 @@ fixHero();document.addEventListener('DOMContentLoaded',fixHero);window.addEventL
 // staccato dalla pagina -> il click sembra non fare niente.
 var wrap=null,prevBtn=null,nextBtn=null,pfill=null;
 function live(){return document.getElementById('prod-carousel');}
+// Lo smooth nativo del browser e' troppo secco: animiamo noi lo
+// scorrimento con una curva morbida, cosi' si vedono scorrere le card.
+var animId=0;
 function stepScroll(dir){
   var cont=live();if(!cont)return;
   var cs=getComputedStyle(cont);
   var gap=parseFloat(cs.columnGap||cs.gap)||20;
   var card=cont.children[0];
   var step=(card?card.getBoundingClientRect().width:cont.clientWidth)+gap;
+  var max=cont.scrollWidth-cont.clientWidth;
+  var from=cont.scrollLeft;
+  var to=Math.max(0,Math.min(max,from+dir*step));
+  if(animId){cancelAnimationFrame(animId);animId=0;}
+  if(Math.abs(to-from)<1)return;
+  var reduce=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // lo snap va spento durante l'animazione, altrimenti combatte ogni frame
   var prevSnap=cont.style.scrollSnapType,done=false;
   function restore(){if(done)return;done=true;cont.style.scrollSnapType=prevSnap||'';}
-  cont.addEventListener('scrollend',restore,{once:true});
-  setTimeout(restore,700);
-  cont.scrollBy({left:dir*step,behavior:'smooth'});
+  cont.style.scrollSnapType='none';
+  if(reduce){cont.scrollLeft=to;restore();updateArrows();return;}
+  var dur=560,t0=0,delta=to-from;
+  function ease(t){return t<0.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;}
+  function frame(ts){
+    if(!t0)t0=ts;
+    var p=Math.min(1,(ts-t0)/dur);
+    cont.scrollLeft=from+delta*ease(p);
+    if(p<1){animId=requestAnimationFrame(frame);}
+    else{animId=0;restore();updateArrows();}
+  }
+  animId=requestAnimationFrame(frame);
 }
 function updateArrows(){
   var cont=live();if(!cont)return;
