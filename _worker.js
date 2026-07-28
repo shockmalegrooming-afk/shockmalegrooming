@@ -972,7 +972,17 @@ async function getCountdown(env) {
 
 async function configRoute(request, env) {
   if (request.method === "GET") {
-    return jsonRes({ countdown: await getCountdown(env), kv: !!kv(env) });
+    // Diagnostica: nomi dei binding di tipo KV visibili al worker.
+    // Solo i nomi, mai i valori: serve a capire se il namespace e'
+    // collegato sotto un nome diverso da SHOCK_KV.
+    const bindings = [];
+    for (const k in env) {
+      const v = env[k];
+      if (v && typeof v === "object" && typeof v.get === "function" && typeof v.list === "function") {
+        bindings.push(k);
+      }
+    }
+    return jsonRes({ countdown: await getCountdown(env), kv: !!kv(env), kvBindings: bindings });
   }
   if (request.method === "POST") {
     const pwd = request.headers.get("X-Admin-Password") || "";
