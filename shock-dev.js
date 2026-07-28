@@ -1,9 +1,10 @@
-/* SHOCK Male Grooming — comandi "modalità dev" nel pannello admin.
-   Aggiunge una voce nel menu di sinistra da cui si attiva la modalità
-   dev per QUESTO dispositivo, si vede chi altro è in sessione e si
-   imposta la data del countdown della pagina di attesa.
-   Il pannello è React: la voce di menu viene clonata da una esistente
-   (così eredita lo stile) e riagganciata se React ricostruisce il menu. */
+/* SHOCK Male Grooming — "Modalità dev" nel pannello admin.
+   Pulsante posizionato subito sopra Logout, con sopra di esso un
+   elenco live di chi è in sessione dev in questo momento (pallino
+   colorato + nome + orario di ingresso, come le note condivise Apple).
+   Il pannello è React: ci agganciamo al pulsante Logout, che è un
+   punto di riferimento stabile nel markup, e ci riposizioniamo se
+   React ricostruisce quella parte. */
 (function () {
   var API = {
     state: '/api/dev/state',
@@ -11,7 +12,8 @@
     exit: '/api/dev/exit',
     config: '/api/config',
   };
-  var ITEM_ID = 'shock-dev-item';
+  var WIDGET_ID = 'shock-dev-widget';
+  var POLL_MS = 15000;
 
   function pwd() {
     try {
@@ -34,17 +36,57 @@
     });
   }
 
-  /* ---------- stile del pannello ---------- */
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  // Colore stabile per nome: stesso nome, stesso pallino, sempre.
+  function colorOf(name) {
+    var h = 0;
+    for (var i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+    return 'hsl(' + (h % 360) + ',68%,58%)';
+  }
+
+  function orario(ms) {
+    if (!ms) return '';
+    try {
+      return new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    } catch (_) {
+      return '';
+    }
+  }
+
+  /* ---------- stile ---------- */
   function css() {
     if (document.getElementById('shock-dev-css')) return;
     var st = document.createElement('style');
     st.id = 'shock-dev-css';
     st.textContent =
+      '#' + WIDGET_ID + '{padding:0 12px}' +
+      '#sd-live{margin-bottom:6px}' +
+      '#sd-live:empty{display:none}' +
+      '.sd-row{display:flex;align-items:center;gap:8px;padding:5px 12px;font-size:.78rem;' +
+      'color:rgba(255,255,255,.55)}' +
+      '.sd-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;box-shadow:0 0 0 3px currentColor22}' +
+      '.sd-row .sd-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
+      '.sd-row .sd-me{color:rgba(255,255,255,.3);font-size:.68rem}' +
+      '.sd-row .sd-time{font-size:.68rem;color:rgba(255,255,255,.32);flex-shrink:0}' +
+      '.sd-devbtn{display:flex;align-items:center;gap:10px;width:100%;padding:10px 12px;' +
+      'border-radius:10px;border:none;cursor:pointer;background:transparent;' +
+      'color:rgba(255,255,255,.45);font-size:.85rem;font-weight:500;text-align:left;' +
+      'font-family:inherit;transition:background .15s,color .15s}' +
+      '.sd-devbtn:hover{background:rgba(255,255,255,.05);color:rgba(255,255,255,.7)}' +
+      '.sd-devbtn.sd-active{color:#c9a84c}' +
+      '.sd-devbtn .sd-ic{font-size:1rem;width:20px;text-align:center;flex-shrink:0}' +
+      /* overlay del pannello modale */
       '.sd-ov{position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:99999;display:flex;' +
       'align-items:center;justify-content:center;padding:20px}' +
       '.sd-card{background:#1C1917;border:1px solid rgba(255,255,255,.09);border-radius:18px;' +
-      'padding:26px 26px 22px;width:100%;max-width:470px;max-height:88vh;overflow:auto;' +
-      'color:#f0ece5;font-family:system-ui,sans-serif;box-shadow:0 30px 80px rgba(0,0,0,.6)}' +
+      'padding:26px 26px 22px;width:100%;max-width:420px;max-height:88vh;overflow:auto;' +
+      'color:#f0ece5;font-family:system-ui,sans-serif;box-shadow:0 30px 80px rgba(0,0,0,.6);' +
+      'position:relative}' +
       '.sd-card h2{margin:0 0 4px;font-size:1.15rem;letter-spacing:.02em}' +
       '.sd-card .sd-sub{margin:0 0 20px;font-size:.8rem;color:rgba(240,236,229,.45);line-height:1.5}' +
       '.sd-sec{border-top:1px solid rgba(255,255,255,.08);margin-top:20px;padding-top:18px}' +
@@ -59,27 +101,53 @@
       '.sd-go{background:#c9a84c;color:#0a0908}' +
       '.sd-off{background:rgba(255,255,255,.1);color:#f0ece5}' +
       '.sd-btn:disabled{opacity:.55;cursor:default}' +
-      '.sd-x{position:absolute;top:14px;right:16px;background:none;border:0;color:rgba(240,236,229,.5);' +
-      'font-size:1.5rem;cursor:pointer;line-height:1;padding:4px 8px}' +
-      '.sd-wrap{position:relative}' +
+      '.sd-x{position:absolute;top:14px;right:16px;background:none;border:0;' +
+      'color:rgba(240,236,229,.5);font-size:1.5rem;cursor:pointer;line-height:1;padding:4px 8px}' +
       '.sd-badge{display:inline-block;padding:5px 12px;border-radius:100px;font-size:.72rem;' +
       'font-weight:700;letter-spacing:.04em}' +
       '.sd-on{background:rgba(201,168,76,.16);color:#c9a84c}' +
       '.sd-no{background:rgba(255,255,255,.08);color:rgba(240,236,229,.6)}' +
-      '.sd-list{list-style:none;margin:0;padding:0}' +
-      '.sd-list li{display:flex;justify-content:space-between;align-items:center;gap:10px;' +
-      'padding:9px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:.87rem}' +
-      '.sd-list li:last-child{border-bottom:0}' +
-      '.sd-when{font-size:.72rem;color:rgba(240,236,229,.38)}' +
       '.sd-msg{font-size:.8rem;line-height:1.5;padding:10px 12px;border-radius:9px;margin-bottom:12px}' +
       '.sd-err{background:rgba(239,68,68,.13);color:#e0685e}' +
       '.sd-ok{background:rgba(76,175,80,.13);color:#7bbf7b}' +
-      '.sd-warn{background:rgba(201,168,76,.12);color:#c9a84c}' +
-      '.sd-empty{font-size:.83rem;color:rgba(240,236,229,.4);margin:0}';
+      '.sd-warn{background:rgba(201,168,76,.12);color:#c9a84c}';
     (document.head || document.documentElement).appendChild(st);
   }
 
-  /* ---------- pannello ---------- */
+  /* ---------- elenco live sopra il pulsante ---------- */
+  var lastSessions = null;
+
+  function renderLive(sessions) {
+    var box = document.getElementById('sd-live');
+    if (!box) return;
+    if (!sessions || !sessions.length) {
+      box.innerHTML = '';
+      return;
+    }
+    var h = '';
+    for (var i = 0; i < sessions.length; i++) {
+      var s = sessions[i];
+      var col = colorOf(s.name || '?');
+      h += '<div class="sd-row"><span class="sd-dot" style="background:' + col + '"></span>' +
+        '<span class="sd-name">' + esc(s.name) + '</span>' +
+        (s.me ? '<span class="sd-me">tu</span>' : '') +
+        '<span class="sd-time">' + esc(orario(s.since)) + '</span></div>';
+    }
+    box.innerHTML = h;
+  }
+
+  function poll() {
+    if (!pwd()) return;
+    api(API.state).then(function (r) {
+      if (r.status !== 200) return;
+      lastSessions = r.body.sessions || [];
+      renderLive(lastSessions);
+      var btn = document.getElementById('shock-dev-item');
+      if (btn) btn.classList.toggle('sd-active', !!r.body.dev);
+    });
+  }
+
+  /* ---------- pannello modale (entra/esci, countdown) ---------- */
   var ov = null;
 
   function close() {
@@ -87,22 +155,6 @@
     ov = null;
   }
 
-  function esc(s) {
-    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
-      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
-    });
-  }
-
-  function quando(ms) {
-    if (!ms) return '';
-    var d = Math.round((Date.now() - ms) / 60000);
-    if (d < 1) return 'ora';
-    if (d < 60) return d + ' min fa';
-    var h = Math.round(d / 60);
-    return h < 24 ? h + 'h fa' : Math.round(h / 24) + 'g fa';
-  }
-
-  // ISO -> valore per <input type="datetime-local"> in ora locale
   function toLocalInput(iso) {
     var d = new Date(iso);
     if (isNaN(d.getTime())) return '';
@@ -115,7 +167,7 @@
     );
   }
 
-  function open() {
+  function openModal() {
     css();
     close();
     ov = document.createElement('div');
@@ -124,21 +176,23 @@
       if (e.target === ov) close();
     });
     ov.innerHTML =
-      '<div class="sd-card sd-wrap"><button class="sd-x" aria-label="Chiudi">&times;</button>' +
+      '<div class="sd-card"><button class="sd-x" aria-label="Chiudi">&times;</button>' +
       '<h2>Modalità dev</h2>' +
       '<p class="sd-sub">Il sito è chiuso al pubblico. La modalità dev vale solo per ' +
       'questo dispositivo e resta attiva anche dopo aver ricaricato o chiuso il browser.</p>' +
       '<div id="sd-body">Carico…</div></div>';
     document.body.appendChild(ov);
     ov.querySelector('.sd-x').addEventListener('click', close);
-    render();
+    renderModal();
   }
 
-  function render(msg) {
+  function renderModal(msg) {
     var box = document.getElementById('sd-body');
     if (!box) return;
     api(API.state).then(function (r) {
       var s = r.body || {};
+      lastSessions = s.sessions || [];
+      renderLive(lastSessions);
       var h = '';
       if (msg) h += '<div class="sd-msg ' + msg.k + '">' + esc(msg.t) + '</div>';
       if (!s.kv) {
@@ -161,20 +215,6 @@
           '<button class="sd-btn sd-go" id="sd-enter">Entra in modalità dev</button>';
       }
 
-      h += '<div class="sd-sec"><h3>In sessione dev adesso</h3>';
-      if (s.sessions && s.sessions.length) {
-        h += '<ul class="sd-list">';
-        for (var i = 0; i < s.sessions.length; i++) {
-          var x = s.sessions[i];
-          h += '<li><span>' + esc(x.name) + (x.me ? ' <span class="sd-when">(tu)</span>' : '') +
-            '</span><span class="sd-when">' + esc(quando(x.seen)) + '</span></li>';
-        }
-        h += '</ul>';
-      } else {
-        h += '<p class="sd-empty">Nessuno al momento.</p>';
-      }
-      h += '</div>';
-
       h += '<div class="sd-sec"><h3>Countdown della pagina di attesa</h3>' +
         '<input id="sd-cd" type="datetime-local" value="' + esc(toLocalInput(s.countdown)) + '"/>' +
         '<button class="sd-btn sd-off" id="sd-save">Salva data</button></div>';
@@ -185,11 +225,12 @@
       if ((b = document.getElementById('sd-enter'))) {
         b.addEventListener('click', function () {
           var n = (document.getElementById('sd-name').value || '').trim();
-          if (!n) return render({ k: 'sd-err', t: 'Scrivi il tuo nome prima di entrare.' });
+          if (!n) return renderModal({ k: 'sd-err', t: 'Scrivi il tuo nome prima di entrare.' });
           b.disabled = true;
           api(API.enter, 'POST', { name: n, password: pwd() }).then(function (r) {
-            if (r.status !== 200) return render({ k: 'sd-err', t: r.body.error || 'Errore' });
-            render({ k: 'sd-ok', t: 'Modalità dev attiva su questo dispositivo.' });
+            if (r.status !== 200) return renderModal({ k: 'sd-err', t: r.body.error || 'Errore' });
+            renderModal({ k: 'sd-ok', t: 'Modalità dev attiva su questo dispositivo.' });
+            poll();
           });
         });
       }
@@ -197,80 +238,62 @@
         b.addEventListener('click', function () {
           b.disabled = true;
           api(API.exit, 'POST').then(function () {
-            render({ k: 'sd-ok', t: 'Modalità dev disattivata su questo dispositivo.' });
+            renderModal({ k: 'sd-ok', t: 'Modalità dev disattivata su questo dispositivo.' });
+            poll();
           });
         });
       }
       if ((b = document.getElementById('sd-save'))) {
         b.addEventListener('click', function () {
           var v = document.getElementById('sd-cd').value;
-          if (!v) return render({ k: 'sd-err', t: 'Scegli una data.' });
+          if (!v) return renderModal({ k: 'sd-err', t: 'Scegli una data.' });
           b.disabled = true;
           api(API.config, 'POST', { countdown: new Date(v).toISOString() }).then(function (r) {
-            if (r.status !== 200) return render({ k: 'sd-err', t: r.body.error || 'Errore' });
-            render({ k: 'sd-ok', t: 'Data del countdown aggiornata.' });
+            if (r.status !== 200) return renderModal({ k: 'sd-err', t: r.body.error || 'Errore' });
+            renderModal({ k: 'sd-ok', t: 'Data del countdown aggiornata.' });
           });
         });
       }
     });
   }
 
-  /* ---------- voce nel menu di sinistra ---------- */
-  // Cloniamo una voce esistente per ereditarne lo stile, qualunque esso sia.
-  var LABELS = ['Dashboard', 'Ordini', 'Clienti', 'Prodotti', 'Inventario',
-                'Sconti', 'Bundle', 'Punti fedeltà', 'Vendita in negozio'];
-
-  // Cerchiamo il contenitore i cui FIGLI DIRETTI sono le voci di menu:
-  // partire dal testo "Dashboard" porterebbe allo span interno, non alla riga.
-  function findMenu() {
-    var nodes = document.querySelectorAll('div,nav,aside,ul,section');
-    var best = null, bestScore = 2;
-    for (var i = 0; i < nodes.length; i++) {
-      var kids = nodes[i].children;
-      if (kids.length < 3) continue;
-      var score = 0;
-      for (var j = 0; j < kids.length; j++) {
-        if (LABELS.indexOf((kids[j].textContent || '').trim()) >= 0) score++;
-      }
-      if (score > bestScore) { bestScore = score; best = nodes[i]; }
+  /* ---------- ancoraggio: subito sopra il pulsante Logout ---------- */
+  function findLogoutBtn() {
+    var els = document.querySelectorAll('button');
+    for (var i = 0; i < els.length; i++) {
+      if (/logout/i.test((els[i].textContent || '').trim())) return els[i];
     }
-    return best;
+    return null;
   }
 
-  function findProto() {
-    var menu = findMenu();
-    if (!menu) return null;
-    var kids = menu.children;
-    for (var i = 0; i < kids.length; i++) {
-      if ((kids[i].textContent || '').trim() === 'Dashboard') return kids[i];
-    }
-    return kids[0] || null;
-  }
-
-  function setLabel(node, text) {
-    var w = document.createTreeWalker(node, NodeFilter.SHOW_TEXT, null);
-    var last = null, n;
-    while ((n = w.nextNode())) if ((n.nodeValue || '').trim()) last = n;
-    if (last) last.nodeValue = text;
-    else node.textContent = text;
+  function buildWidget() {
+    var wrap = document.createElement('div');
+    wrap.id = WIDGET_ID;
+    wrap.innerHTML =
+      '<div id="sd-live"></div>' +
+      '<button type="button" class="sd-devbtn" id="shock-dev-item">' +
+      '<span class="sd-ic">🛠</span>Modalità dev</button>';
+    wrap.querySelector('#shock-dev-item').addEventListener('click', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      openModal();
+    });
+    return wrap;
   }
 
   function mount() {
-    if (document.getElementById(ITEM_ID)) return;
-    if (!pwd()) return; // non ancora autenticato: nessun menu da agganciare
-    var proto = findProto();
-    if (!proto || !proto.parentNode) return;
-    var item = proto.cloneNode(true);
-    item.id = ITEM_ID;
-    item.removeAttribute('href');
-    setLabel(item, 'Modalità dev');
-    item.style.cursor = 'pointer';
-    item.addEventListener('click', function (e) {
-      e.preventDefault();
-      e.stopPropagation();
-      open();
-    });
-    proto.parentNode.appendChild(item);
+    if (!pwd()) return; // non ancora autenticato
+    var logout = findLogoutBtn();
+    if (!logout || !logout.parentNode) return;
+    var existing = document.getElementById(WIDGET_ID);
+    if (existing) {
+      // React puo' aver ricostruito il footer: ci riposizioniamo se serve.
+      if (existing.nextSibling !== logout) logout.parentNode.insertBefore(existing, logout);
+      return;
+    }
+    logout.parentNode.insertBefore(buildWidget(), logout);
+    renderLive(lastSessions);
+    poll();
   }
 
   function start() {
@@ -287,6 +310,7 @@
       }).observe(document.body, { childList: true, subtree: true });
     }
     setInterval(mount, 2000); // rete di sicurezza dopo il login
+    setInterval(poll, POLL_MS);
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
