@@ -5,7 +5,7 @@ const CORS = {
 };
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const { pathname, search } = url;
 
@@ -51,6 +51,21 @@ export default {
 
     if (pathname === "/api/punti") {
       return handlePunti(request, env);
+    }
+
+    if (pathname === "/api/dev/enter") return devEnter(request, env);
+    if (pathname === "/api/dev/exit") return devExit(request, env);
+    if (pathname === "/api/dev/state") return devState(request, env);
+    if (pathname === "/api/config") return configRoute(request, env);
+
+    // Blocco pre-lancio: le pagine sono servite solo ai dispositivi in
+    // modalita' dev. Il controllo sta qui, nel worker, e non nel browser:
+    // non si aggira ne' disattivando JavaScript ne' leggendo il sorgente.
+    if (isPageRequest(pathname) && !isAdminArea(pathname)) {
+      const dev = await devInfo(request, env);
+      if (!dev) return comingSoon(env);
+      const store = kv(env);
+      if (store && dev.id && ctx && ctx.waitUntil) ctx.waitUntil(touchSession(store, dev));
     }
 
     return env.ASSETS.fetch(request);
@@ -740,4 +755,315 @@ async function handlePunti(request, env) {
   }
 
   return new Response("Method not allowed", { status: 405, headers: CORS });
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   BLOCCO PRE-LANCIO + MODALITA' DEV
+   Il sito non e' ancora pubblico: chi arriva vede la pagina di attesa.
+   Gli admin, dopo l'accesso al pannello, attivano la "modalita' dev"
+   che vale per il SINGOLO dispositivo tramite un cookie firmato con la
+   password admin: non e' falsificabile e non richiede di riautenticarsi
+   a ogni ricaricamento.
+   ═══════════════════════════════════════════════════════════════════ */
+
+const DEV_COOKIE = "shock_dev";
+const DEV_COOKIE_TTL = 60 * 60 * 24 * 30; // il dispositivo resta "dev" per 30 giorni
+const DEV_SESSION_TTL = 60 * 60 * 12;     // "in sessione ora": decade dopo 12h di inattivita'
+const KV_COUNTDOWN = "config:countdown";
+const KV_DEV_PREFIX = "dev:";
+// Segnaposto: la data vera si imposta dal pannello admin (richiede KV).
+const COUNTDOWN_FALLBACK = "2026-08-27T18:00:00.000Z";
+
+function kv(env) {
+  return env.SHOCK_KV || null;
+}
+
+function jsonRes(obj, status = 200, extra = {}) {
+  return new Response(JSON.stringify(obj), {
+    status,
+    headers: { "Content-Type": "application/json", "Cache-Control": "no-store", ...CORS, ...extra },
+  });
+}
+
+function readCookie(request, name) {
+  const raw = request.headers.get("Cookie") || "";
+  const parts = raw.split(";");
+  for (let i = 0; i < parts.length; i++) {
+    const p = parts[i].trim();
+    if (p.indexOf(name + "=") === 0) return decodeURIComponent(p.slice(name.length + 1));
+  }
+  return null;
+}
+
+function b64urlFromBytes(buf) {
+  const a = new Uint8Array(buf);
+  let s = "";
+  for (let i = 0; i < a.length; i++) s += String.fromCharCode(a[i]);
+  return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function b64urlToText(s) {
+  let t = s.replace(/-/g, "+").replace(/_/g, "/");
+  while (t.length % 4) t += "=";
+  const bin = atob(t);
+  const a = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i);
+  return new TextDecoder().decode(a);
+}
+
+async function hmac(msg, secret) {
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw",
+    enc.encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  return b64urlFromBytes(await crypto.subtle.sign("HMAC", key, enc.encode(msg)));
+}
+
+async function devSign(payload, secret) {
+  const body = b64urlFromBytes(new TextEncoder().encode(JSON.stringify(payload)));
+  return body + "." + (await hmac(body, secret));
+}
+
+async function devRead(token, secret) {
+  if (!token || token.indexOf(".") < 0) return null;
+  const i = token.indexOf(".");
+  const body = token.slice(0, i);
+  const sig = token.slice(i + 1);
+  const expect = await hmac(body, secret);
+  if (sig.length !== expect.length) return null;
+  let diff = 0; // confronto a tempo costante
+  for (let k = 0; k < sig.length; k++) diff |= sig.charCodeAt(k) ^ expect.charCodeAt(k);
+  if (diff !== 0) return null;
+  try {
+    return JSON.parse(b64urlToText(body));
+  } catch (_) {
+    return null;
+  }
+}
+
+async function devInfo(request, env) {
+  if (!env.ADMIN_PASSWORD) return null; // senza segreto non si firma nulla
+  const tok = readCookie(request, DEV_COOKIE);
+  if (!tok) return null;
+  return await devRead(tok, env.ADMIN_PASSWORD);
+}
+
+function isAdminArea(pathname) {
+  return (
+    pathname === "/admin" ||
+    pathname === "/admin/" ||
+    pathname === "/admin.html" ||
+    pathname.indexOf("/admin/") === 0
+  );
+}
+
+// Sono "pagine" gli indirizzi navigabili; gli asset con estensione
+// (immagini, css, js) restano accessibili, servono al pannello admin
+// e alla pagina di attesa.
+function isPageRequest(pathname) {
+  if (pathname.indexOf("/api/") === 0 || pathname.indexOf("/_next/") === 0) return false;
+  const last = pathname.split("/").pop() || "";
+  if (last.indexOf(".") >= 0 && !/\.html?$/i.test(last)) return false;
+  return true;
+}
+
+async function touchSession(store, dev) {
+  const key = KV_DEV_PREFIX + dev.id;
+  let o = { name: dev.name, since: Date.now() };
+  const cur = await store.get(key);
+  if (cur) {
+    try {
+      o = JSON.parse(cur);
+    } catch (_) {}
+  }
+  o.name = dev.name;
+  o.seen = Date.now();
+  await store.put(key, JSON.stringify(o), { expirationTtl: DEV_SESSION_TTL });
+}
+
+async function devEnter(request, env) {
+  if (request.method !== "POST") return jsonRes({ error: "Metodo non consentito" }, 405);
+  let body = {};
+  try {
+    body = await request.json();
+  } catch (_) {}
+  const pwd = body.password || request.headers.get("X-Admin-Password") || "";
+  if (!env.ADMIN_PASSWORD || pwd !== env.ADMIN_PASSWORD) {
+    return jsonRes({ error: "Password non corretta" }, 401);
+  }
+  const name = String(body.name || "")
+    .replace(/[\u0000-\u001f<>]/g, "") // via caratteri di controllo e angolari
+    .trim()
+    .slice(0, 40);
+  if (!name) return jsonRes({ error: "Scrivi il tuo nome prima di entrare" }, 400);
+
+  const id = crypto.randomUUID();
+  const token = await devSign({ id, name, ts: Date.now() }, env.ADMIN_PASSWORD);
+  const store = kv(env);
+  if (store) {
+    await store.put(
+      KV_DEV_PREFIX + id,
+      JSON.stringify({ name, since: Date.now(), seen: Date.now() }),
+      { expirationTtl: DEV_SESSION_TTL }
+    );
+  }
+  return jsonRes({ ok: true, name, kv: !!store }, 200, {
+    "Set-Cookie":
+      DEV_COOKIE + "=" + encodeURIComponent(token) +
+      "; Path=/; Max-Age=" + DEV_COOKIE_TTL + "; HttpOnly; Secure; SameSite=Lax",
+  });
+}
+
+async function devExit(request, env) {
+  const dev = await devInfo(request, env);
+  const store = kv(env);
+  if (dev && dev.id && store) await store.delete(KV_DEV_PREFIX + dev.id);
+  return jsonRes({ ok: true }, 200, {
+    "Set-Cookie": DEV_COOKIE + "=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax",
+  });
+}
+
+async function devState(request, env) {
+  const dev = await devInfo(request, env);
+  const out = {
+    dev: !!dev,
+    name: dev ? dev.name : null,
+    sessions: [],
+    kv: !!kv(env),
+    countdown: await getCountdown(env),
+  };
+  // l'elenco di chi e' in sessione lo vede solo chi ha fatto l'accesso
+  const pwd = request.headers.get("X-Admin-Password") || "";
+  if (env.ADMIN_PASSWORD && pwd === env.ADMIN_PASSWORD) {
+    const store = kv(env);
+    if (store) {
+      const list = await store.list({ prefix: KV_DEV_PREFIX });
+      for (const k of list.keys) {
+        const v = await store.get(k.name);
+        if (!v) continue;
+        try {
+          const o = JSON.parse(v);
+          out.sessions.push({
+            name: o.name,
+            since: o.since || null,
+            seen: o.seen || null,
+            me: !!(dev && KV_DEV_PREFIX + dev.id === k.name),
+          });
+        } catch (_) {}
+      }
+      out.sessions.sort((a, b) => (b.seen || 0) - (a.seen || 0));
+    }
+  }
+  return jsonRes(out);
+}
+
+async function getCountdown(env) {
+  const store = kv(env);
+  if (store) {
+    const v = await store.get(KV_COUNTDOWN);
+    if (v) return v;
+  }
+  return COUNTDOWN_FALLBACK;
+}
+
+async function configRoute(request, env) {
+  if (request.method === "GET") {
+    return jsonRes({ countdown: await getCountdown(env), kv: !!kv(env) });
+  }
+  if (request.method === "POST") {
+    const pwd = request.headers.get("X-Admin-Password") || "";
+    if (!env.ADMIN_PASSWORD || pwd !== env.ADMIN_PASSWORD) {
+      return jsonRes({ error: "Non autorizzato" }, 401);
+    }
+    const store = kv(env);
+    if (!store) {
+      return jsonRes({ error: "Memoria KV non collegata: la data non puo' essere salvata" }, 501);
+    }
+    let body = {};
+    try {
+      body = await request.json();
+    } catch (_) {}
+    const d = new Date(body.countdown);
+    if (isNaN(d.getTime())) return jsonRes({ error: "Data non valida" }, 400);
+    await store.put(KV_COUNTDOWN, d.toISOString());
+    return jsonRes({ ok: true, countdown: d.toISOString() });
+  }
+  return jsonRes({ error: "Metodo non consentito" }, 405);
+}
+
+async function comingSoon(env) {
+  const iso = await getCountdown(env);
+  return new Response(comingSoonHtml(iso), {
+    status: 200,
+    headers: {
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": "no-store",
+      "X-Robots-Tag": "noindex, nofollow",
+    },
+  });
+}
+
+function comingSoonHtml(iso) {
+  return `<!DOCTYPE html>
+<html lang="it" class="chakra_petch_13432d97-module__uwhhyG__variable plus_jakarta_sans_977d070a-module__D5mM4W__variable">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<meta name="robots" content="noindex, nofollow"/>
+<title>It's time to SHOCK — SHOCK Male Grooming</title>
+<link rel="stylesheet" href="/_next/static/chunks/157p7ch9xsnj3.css"/>
+<link rel="icon" href="/favicon.ico?v=shock2" sizes="any" type="image/x-icon"/>
+<link rel="apple-touch-icon" href="/apple-touch-icon.png?v=shock2"/>
+<style>
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;background:#0a0908;color:#f0ece5;
+ font-family:var(--font-b,system-ui,sans-serif);-webkit-font-smoothing:antialiased;
+ display:flex;align-items:center;justify-content:center;text-align:center;padding:34px 20px;
+ background-image:radial-gradient(ellipse at 50% -10%,rgba(201,168,76,.13),transparent 62%)}
+.box{width:100%;max-width:660px}
+img.logo{height:56px;width:auto;display:block;margin:0 auto 36px}
+h1{font-family:var(--font-brand,inherit);font-weight:700;text-transform:uppercase;color:#fff;
+ font-size:clamp(1.55rem,5.4vw,2.7rem);letter-spacing:.14em;line-height:1.2;margin:0 0 20px}
+.sub{font-size:.74rem;letter-spacing:.34em;text-transform:uppercase;color:#c9a84c;margin:0 0 48px}
+.cd{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+.u{flex:1 1 0;min-width:74px;max-width:132px;background:rgba(255,255,255,.04);
+ border:1px solid rgba(255,255,255,.09);border-radius:14px;padding:18px 8px}
+.n{font-family:var(--font-brand,inherit);font-weight:700;color:#fff;line-height:1;
+ font-size:clamp(1.7rem,6vw,2.6rem);font-variant-numeric:tabular-nums}
+.l{font-size:.6rem;letter-spacing:.2em;text-transform:uppercase;color:rgba(240,236,229,.42);margin-top:9px}
+.done{font-family:var(--font-brand,inherit);font-size:1.1rem;color:#c9a84c;
+ letter-spacing:.18em;text-transform:uppercase;margin:0}
+</style>
+</head>
+<body>
+<div class="box">
+  <img class="logo" src="/logo.png" alt="SHOCK Male Grooming"/>
+  <h1>It&#39;s time to SHOCK</h1>
+  <p class="sub">Evoluzione in corso</p>
+  <div class="cd" id="cd"></div>
+</div>
+<script>
+(function(){
+  var target=new Date(${JSON.stringify(iso)}).getTime();
+  var el=document.getElementById('cd'), timer=null;
+  var U=[['Giorni',86400000],['Ore',3600000],['Minuti',60000],['Secondi',1000]];
+  function draw(){
+    var d=target-Date.now();
+    if(!(d>0)){el.innerHTML='<p class="done">Ci siamo.</p>';if(timer)clearInterval(timer);return;}
+    var h='';
+    for(var i=0;i<U.length;i++){
+      var v=Math.floor(d/U[i][1]); d-=v*U[i][1];
+      h+='<div class="u"><div class="n">'+(v<10?'0':'')+v+'</div><div class="l">'+U[i][0]+'</div></div>';
+    }
+    el.innerHTML=h;
+  }
+  draw(); timer=setInterval(draw,1000);
+})();
+</script>
+</body>
+</html>`;
 }
