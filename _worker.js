@@ -774,8 +774,24 @@ const KV_DEV_PREFIX = "dev:";
 // Segnaposto: la data vera si imposta dal pannello admin (richiede KV).
 const COUNTDOWN_FALLBACK = "2026-08-27T18:00:00.000Z";
 
+// Un namespace KV espone get/put/list; ASSETS (i file statici) no: ha
+// get e list ma non put, e comunque lo escludiamo per sicurezza.
+function isKV(v) {
+  return !!v && typeof v === "object" &&
+    typeof v.get === "function" &&
+    typeof v.put === "function" &&
+    typeof v.list === "function";
+}
+
 function kv(env) {
-  return env.SHOCK_KV || null;
+  if (isKV(env.SHOCK_KV)) return env.SHOCK_KV;
+  // Tolleranza sul nome: se il namespace e' stato collegato con un nome
+  // diverso va bene lo stesso, cosi' un refuso non blocca tutto.
+  for (const k in env) {
+    if (k === "ASSETS") continue;
+    if (isKV(env[k])) return env[k];
+  }
+  return null;
 }
 
 function jsonRes(obj, status = 200, extra = {}) {
@@ -976,12 +992,7 @@ async function configRoute(request, env) {
     // Solo i nomi, mai i valori: serve a capire se il namespace e'
     // collegato sotto un nome diverso da SHOCK_KV.
     const bindings = [];
-    for (const k in env) {
-      const v = env[k];
-      if (v && typeof v === "object" && typeof v.get === "function" && typeof v.list === "function") {
-        bindings.push(k);
-      }
-    }
+    for (const k in env) if (isKV(env[k])) bindings.push(k);
     return jsonRes({ countdown: await getCountdown(env), kv: !!kv(env), kvBindings: bindings });
   }
   if (request.method === "POST") {
