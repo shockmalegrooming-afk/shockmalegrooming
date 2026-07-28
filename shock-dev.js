@@ -13,6 +13,7 @@
     config: '/api/config',
   };
   var WIDGET_ID = 'shock-dev-widget';
+  var BLOCK_WIDGET_ID = 'shock-block-widget';
   var POLL_MS = 15000;
 
   function pwd() {
@@ -81,6 +82,18 @@
       'background:rgba(34,197,94,.12);border:1.5px solid rgba(34,197,94,.4);color:#4ade80}' +
       '.sd-devbtn:hover{background:rgba(34,197,94,.18)}' +
       '.sd-devbtn .sd-ic{font-size:1rem;width:20px;text-align:center;flex-shrink:0}' +
+      /* pulsante "Blocco sito": riga di menu normale, non un banner colorato */
+      '#' + BLOCK_WIDGET_ID + '{padding:2px 12px 6px}' +
+      '.sd-blockbtn{display:flex;align-items:center;gap:10px;width:100%;padding:10px 12px;' +
+      'border-radius:10px;border:none;cursor:pointer;background:transparent;' +
+      'color:rgba(255,255,255,.45);font-size:.85rem;font-weight:500;text-align:left;' +
+      'font-family:inherit;transition:background .15s,color .15s}' +
+      '.sd-blockbtn:hover{background:rgba(255,255,255,.05);color:rgba(255,255,255,.7)}' +
+      '.sd-blocklabel{flex:1}' +
+      '.sd-blockstatus{font-size:.62rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;' +
+      'padding:3px 9px;border-radius:100px;flex-shrink:0}' +
+      '.sd-blockstatus.on{background:rgba(76,175,80,.15);color:#7bbf7b}' +
+      '.sd-blockstatus.off{background:rgba(239,68,68,.15);color:#e0685e}' +
       '.sd-devbtn.sd-active{background:rgba(239,68,68,.16);border-color:rgba(239,68,68,.55);' +
       'color:#f87171;animation:sdPulse 2.2s ease-in-out infinite}' +
       '.sd-devbtn.sd-active:hover{background:rgba(239,68,68,.22)}' +
@@ -153,7 +166,7 @@
     });
   }
 
-  /* ---------- pannello modale (entra/esci, countdown) ---------- */
+  /* ---------- pannello modale della modalita' dev (entra/esci) ---------- */
   var ov = null;
 
   function close() {
@@ -184,7 +197,8 @@
     ov.innerHTML =
       '<div class="sd-card"><button class="sd-x" aria-label="Chiudi">&times;</button>' +
       '<h2>Modalità dev</h2>' +
-      '<p class="sd-sub">Il sito è chiuso al pubblico. La modalità dev vale solo per ' +
+      '<p class="sd-sub">Se il sito è chiuso al pubblico, la modalità dev ti fa vedere ' +
+      'comunque il sito vero. Vale solo per ' +
       'questo dispositivo e resta attiva anche dopo aver ricaricato o chiuso il browser.</p>' +
       '<div id="sd-body">Carico…</div></div>';
     document.body.appendChild(ov);
@@ -203,9 +217,8 @@
       if (msg) h += '<div class="sd-msg ' + msg.k + '">' + esc(msg.t) + '</div>';
       if (!s.kv) {
         h +=
-          '<div class="sd-msg sd-warn">Memoria KV non collegata: la data del countdown non ' +
-          'può essere salvata e l\'elenco di chi è in sessione resta vuoto. Il blocco del sito ' +
-          'e la modalità dev funzionano comunque.</div>';
+          '<div class="sd-msg sd-warn">Memoria KV non collegata: l\'elenco di chi è in ' +
+          'sessione resta vuoto. Il blocco del sito e la modalità dev funzionano comunque.</div>';
       }
 
       h += '<p style="margin:0 0 14px"><span class="sd-badge ' + (s.dev ? 'sd-on' : 'sd-no') + '">' +
@@ -221,18 +234,21 @@
           '<button class="sd-btn sd-go" id="sd-enter">Entra in modalità dev</button>';
       }
 
-      h += '<div class="sd-sec"><h3>Countdown della pagina di attesa</h3>' +
-        '<input id="sd-cd" type="datetime-local" value="' + esc(toLocalInput(s.countdown)) + '"/>' +
-        '<button class="sd-btn sd-off" id="sd-save">Salva data</button></div>';
-
       box.innerHTML = h;
 
-      var b;
-      if ((b = document.getElementById('sd-enter'))) {
-        b.addEventListener('click', function () {
+      // Variabili separate per ognuno: sd-enter e sd-exit sono mutuamente
+      // esclusivi nell'HTML, ma condividere una sola "var b" tra i due
+      // blocchi fa si' che il secondo controllo (quello del bottone
+      // assente) riassegni la stessa variabile a null, azzerando il
+      // riferimento che il primo listener aveva gia' catturato in
+      // chiusura: al click, "b.disabled = true" lanciava un errore
+      // prima ancora di chiamare l'API.
+      var enterBtn = document.getElementById('sd-enter');
+      if (enterBtn) {
+        enterBtn.addEventListener('click', function () {
           var n = (document.getElementById('sd-name').value || '').trim();
           if (!n) return renderModal({ k: 'sd-err', t: 'Scrivi il tuo nome prima di entrare.' });
-          b.disabled = true;
+          enterBtn.disabled = true;
           api(API.enter, 'POST', { name: n, password: pwd() }).then(function (r) {
             if (r.status !== 200) return renderModal({ k: 'sd-err', t: r.body.error || 'Errore' });
             renderModal({ k: 'sd-ok', t: 'Modalità dev attiva su questo dispositivo.' });
@@ -240,25 +256,93 @@
           });
         });
       }
-      if ((b = document.getElementById('sd-exit'))) {
-        b.addEventListener('click', function () {
-          b.disabled = true;
+      var exitBtn = document.getElementById('sd-exit');
+      if (exitBtn) {
+        exitBtn.addEventListener('click', function () {
+          exitBtn.disabled = true;
           api(API.exit, 'POST').then(function () {
             renderModal({ k: 'sd-ok', t: 'Modalità dev disattivata su questo dispositivo.' });
             poll();
           });
         });
       }
-      if ((b = document.getElementById('sd-save'))) {
-        b.addEventListener('click', function () {
-          var v = document.getElementById('sd-cd').value;
-          if (!v) return renderModal({ k: 'sd-err', t: 'Scegli una data.' });
-          b.disabled = true;
-          api(API.config, 'POST', { countdown: new Date(v).toISOString() }).then(function (r) {
-            if (r.status !== 200) return renderModal({ k: 'sd-err', t: r.body.error || 'Errore' });
-            renderModal({ k: 'sd-ok', t: 'Data del countdown aggiornata.' });
-          });
+    });
+  }
+
+  /* ---------- blocco sito: separato dalla modalita' dev ---------- */
+  function openBlockModal() {
+    css();
+    close();
+    ov = document.createElement('div');
+    ov.className = 'sd-ov';
+    ov.addEventListener('click', function (e) {
+      if (e.target === ov) close();
+    });
+    ov.innerHTML =
+      '<div class="sd-card"><button class="sd-x" aria-label="Chiudi">&times;</button>' +
+      '<h2>Blocco sito</h2>' +
+      '<p class="sd-sub">Controlla se il sito è chiuso al pubblico, indipendentemente dalla ' +
+      'modalità dev: se lo disattivi il sito si apre a tutti subito, cookie dev o no.</p>' +
+      '<div id="sd-block-body">Carico…</div></div>';
+    document.body.appendChild(ov);
+    ov.querySelector('.sd-x').addEventListener('click', close);
+    renderBlockModal();
+  }
+
+  function renderBlockModal(msg) {
+    var box = document.getElementById('sd-block-body');
+    if (!box) return;
+    api(API.config).then(function (r) {
+      var s = r.body || {};
+      var h = '';
+      if (msg) h += '<div class="sd-msg ' + msg.k + '">' + esc(msg.t) + '</div>';
+      if (!s.kv) {
+        h +=
+          '<div class="sd-msg sd-warn">Memoria KV non collegata: qui non puoi salvare nulla. ' +
+          'Il blocco resta quello di partenza.</div>';
+      }
+      h += '<p style="margin:0 0 14px"><span class="sd-badge ' + (s.enabled ? 'sd-on' : 'sd-no') + '">' +
+        (s.enabled ? 'Sito chiuso al pubblico' : 'Sito aperto a tutti') + '</span></p>' +
+        '<label style="display:flex;align-items:center;gap:10px;margin-bottom:18px;font-size:.85rem;' +
+        'color:rgba(240,236,229,.75);cursor:pointer">' +
+        '<input type="checkbox" id="sd-block-en" style="width:auto;margin:0"' +
+        (s.enabled ? ' checked' : '') + '/> Blocco attivo</label>' +
+        '<div class="sd-sec" style="margin-top:0;padding-top:0;border-top:none">' +
+        '<h3>Il countdown inizia <span style="text-transform:none;letter-spacing:0;font-weight:400">' +
+        '(facoltativo, solo per te — i visitatori non vedono differenze prima o dopo)</span></h3>' +
+        '<input id="sd-block-start" type="datetime-local" value="' + esc(toLocalInput(s.start)) + '"/>' +
+        '<h3 style="margin-top:6px">Il countdown finisce</h3>' +
+        '<input id="sd-block-end" type="datetime-local" value="' + esc(toLocalInput(s.end)) + '"/>' +
+        '<button class="sd-btn sd-go" id="sd-block-save">Salva</button></div>';
+      box.innerHTML = h;
+
+      document.getElementById('sd-block-save').addEventListener('click', function () {
+        var end = document.getElementById('sd-block-end').value;
+        var start = document.getElementById('sd-block-start').value;
+        var en = document.getElementById('sd-block-en').checked;
+        if (!end) return renderBlockModal({ k: 'sd-err', t: 'Scegli quando finisce il countdown.' });
+        this.disabled = true;
+        api(API.config, 'POST', {
+          enabled: en,
+          start: start ? new Date(start).toISOString() : null,
+          end: new Date(end).toISOString(),
+        }).then(function (r) {
+          if (r.status !== 200) return renderBlockModal({ k: 'sd-err', t: r.body.error || 'Errore' });
+          renderBlockModal({ k: 'sd-ok', t: 'Impostazioni salvate.' });
+          pollBlock();
         });
+      });
+    });
+  }
+
+  function pollBlock() {
+    if (!pwd()) return;
+    api(API.config).then(function (r) {
+      if (r.status !== 200) return;
+      var st = document.getElementById('sd-block-status');
+      if (st) {
+        st.textContent = r.body.enabled ? 'Attivo' : 'Disattivo';
+        st.className = 'sd-blockstatus ' + (r.body.enabled ? 'on' : 'off');
       }
     });
   }
@@ -287,24 +371,51 @@
     return wrap;
   }
 
+  function buildBlockWidget() {
+    var wrap = document.createElement('div');
+    wrap.id = BLOCK_WIDGET_ID;
+    wrap.innerHTML =
+      '<button type="button" class="sd-blockbtn" id="shock-block-item">' +
+      '<span class="sd-ic">🔒</span><span class="sd-blocklabel">Blocco sito</span>' +
+      '<span class="sd-blockstatus" id="sd-block-status"></span></button>';
+    wrap.querySelector('#shock-block-item').addEventListener('click', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      openBlockModal();
+    });
+    return wrap;
+  }
+
   function mount() {
     if (!pwd()) return; // non ancora autenticato
     css(); // il banner deve essere gia' stilato al primo disegno, non solo aprendo il pannello
     var logout = findLogoutBtn();
     // footer = il blocco che contiene Logout e "Sito pubblico" insieme;
-    // il widget va sopra QUEL blocco intero, non solo sopra Logout.
+    // i widget vanno sopra QUEL blocco intero, non solo sopra Logout.
+    // Ordine dall'alto: Blocco sito, poi Modalità dev, poi il footer.
     var footer = logout && logout.parentNode;
     var outer = footer && footer.parentNode;
     if (!footer || !outer) return;
-    var existing = document.getElementById(WIDGET_ID);
-    if (existing) {
+
+    var devW = document.getElementById(WIDGET_ID);
+    if (!devW) {
+      devW = buildWidget();
+      outer.insertBefore(devW, footer);
+      renderLive(lastSessions);
+      poll();
+    } else if (devW.nextSibling !== footer) {
       // React puo' aver ricostruito il footer: ci riposizioniamo se serve.
-      if (existing.nextSibling !== footer) outer.insertBefore(existing, footer);
-      return;
+      outer.insertBefore(devW, footer);
     }
-    outer.insertBefore(buildWidget(), footer);
-    renderLive(lastSessions);
-    poll();
+
+    var blockW = document.getElementById(BLOCK_WIDGET_ID);
+    if (!blockW) {
+      blockW = buildBlockWidget();
+      outer.insertBefore(blockW, devW);
+      pollBlock();
+    } else if (blockW.nextSibling !== devW) {
+      outer.insertBefore(blockW, devW);
+    }
   }
 
   function start() {
@@ -322,6 +433,7 @@
     }
     setInterval(mount, 2000); // rete di sicurezza dopo il login
     setInterval(poll, POLL_MS);
+    setInterval(pollBlock, POLL_MS);
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);

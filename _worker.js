@@ -59,13 +59,19 @@ export default {
     if (pathname === "/api/config") return configRoute(request, env);
 
     // Blocco pre-lancio: le pagine sono servite solo ai dispositivi in
-    // modalita' dev. Il controllo sta qui, nel worker, e non nel browser:
-    // non si aggira ne' disattivando JavaScript ne' leggendo il sorgente.
+    // modalita' dev, finche' il blocco e' attivo. Il controllo sta qui,
+    // nel worker, e non nel browser: non si aggira ne' disattivando
+    // JavaScript ne' leggendo il sorgente. Il blocco e' indipendente
+    // dalla modalita' dev: se e' disattivato il sito e' aperto a tutti,
+    // cookie dev o no.
     if (isPageRequest(pathname) && !isAdminArea(pathname)) {
-      const dev = await devInfo(request, env);
-      if (!dev) return comingSoon(env);
-      const store = kv(env);
-      if (store && dev.id && ctx && ctx.waitUntil) ctx.waitUntil(touchSession(store, dev));
+      const cfg = await getBlockConfig(env);
+      if (cfg.enabled) {
+        const dev = await devInfo(request, env);
+        if (!dev) return comingSoon(env, cfg);
+        const store = kv(env);
+        if (store && dev.id && ctx && ctx.waitUntil) ctx.waitUntil(touchSession(store, dev));
+      }
     }
 
     return env.ASSETS.fetch(request);
@@ -769,10 +775,10 @@ async function handlePunti(request, env) {
 const DEV_COOKIE = "shock_dev";
 const DEV_COOKIE_TTL = 60 * 60 * 24 * 30; // il dispositivo resta "dev" per 30 giorni
 const DEV_SESSION_TTL = 60 * 60 * 12;     // "in sessione ora": decade dopo 12h di inattivita'
-const KV_COUNTDOWN = "config:countdown";
+const KV_BLOCK = "config:block";
 const KV_DEV_PREFIX = "dev:";
-// Segnaposto: la data vera si imposta dal pannello admin (richiede KV).
-const COUNTDOWN_FALLBACK = "2026-08-27T18:00:00.000Z";
+// Segnaposto: i valori veri si impostano dal pannello admin (richiede KV).
+const BLOCK_FALLBACK = { enabled: true, start: null, end: "2026-08-27T18:00:00.000Z" };
 
 // Un namespace KV espone get/put/list; ASSETS (i file statici) no: ha
 // get e list ma non put, e comunque lo escludiamo per sicurezza.
@@ -950,7 +956,6 @@ async function devState(request, env) {
     name: dev ? dev.name : null,
     sessions: [],
     kv: !!kv(env),
-    countdown: await getCountdown(env),
   };
   // l'elenco di chi e' in sessione lo vede solo chi ha fatto l'accesso
   const pwd = request.headers.get("X-Admin-Password") || "";
@@ -977,13 +982,24 @@ async function devState(request, env) {
   return jsonRes(out);
 }
 
-async function getCountdown(env) {
+// Configurazione del blocco: indipendente dalla modalita' dev. "enabled"
+// decide se il sito e' chiuso al pubblico o aperto a tutti; "start" e'
+// solo informativo (non cambia cosa vede chi visita); "end" e' il
+// traguardo verso cui conta il countdown mostrato sulla pagina di attesa.
+async function getBlockConfig(env) {
   const store = kv(env);
   if (store) {
-    const v = await store.get(KV_COUNTDOWN);
-    if (v) return v;
+    const v = await store.get(KV_BLOCK);
+    if (v) {
+      try {
+        const o = JSON.parse(v);
+        if (o && typeof o === "object" && o.end) {
+          return { enabled: o.enabled !== false, start: o.start || null, end: o.end };
+        }
+      } catch (_) {}
+    }
   }
-  return COUNTDOWN_FALLBACK;
+  return BLOCK_FALLBACK;
 }
 
 async function configRoute(request, env) {
@@ -993,7 +1009,8 @@ async function configRoute(request, env) {
     // collegato sotto un nome diverso da SHOCK_KV.
     const bindings = [];
     for (const k in env) if (isKV(env[k])) bindings.push(k);
-    return jsonRes({ countdown: await getCountdown(env), kv: !!kv(env), kvBindings: bindings });
+    const cfg = await getBlockConfig(env);
+    return jsonRes({ ...cfg, kv: !!kv(env), kvBindings: bindings });
   }
   if (request.method === "POST") {
     const pwd = request.headers.get("X-Admin-Password") || "";
@@ -1002,23 +1019,30 @@ async function configRoute(request, env) {
     }
     const store = kv(env);
     if (!store) {
-      return jsonRes({ error: "Memoria KV non collegata: la data non puo' essere salvata" }, 501);
+      return jsonRes({ error: "Memoria KV non collegata: le impostazioni non possono essere salvate" }, 501);
     }
     let body = {};
     try {
       body = await request.json();
     } catch (_) {}
-    const d = new Date(body.countdown);
-    if (isNaN(d.getTime())) return jsonRes({ error: "Data non valida" }, 400);
-    await store.put(KV_COUNTDOWN, d.toISOString());
-    return jsonRes({ ok: true, countdown: d.toISOString() });
+    const end = new Date(body.end);
+    if (isNaN(end.getTime())) return jsonRes({ error: "Data di fine non valida" }, 400);
+    let start = null;
+    if (body.start) {
+      const d = new Date(body.start);
+      if (isNaN(d.getTime())) return jsonRes({ error: "Data di inizio non valida" }, 400);
+      start = d.toISOString();
+    }
+    const cfg = { enabled: !!body.enabled, start, end: end.toISOString() };
+    await store.put(KV_BLOCK, JSON.stringify(cfg));
+    return jsonRes({ ok: true, ...cfg });
   }
   return jsonRes({ error: "Metodo non consentito" }, 405);
 }
 
-async function comingSoon(env) {
-  const iso = await getCountdown(env);
-  return new Response(comingSoonHtml(iso), {
+async function comingSoon(env, cfg) {
+  const c = cfg || (await getBlockConfig(env));
+  return new Response(comingSoonHtml(c.end), {
     status: 200,
     headers: {
       "Content-Type": "text/html; charset=utf-8",
@@ -1062,7 +1086,7 @@ h1{font-family:var(--font-brand,inherit);font-weight:700;text-transform:uppercas
 </head>
 <body>
 <div class="box">
-  <img class="logo" src="/logo.png" alt="SHOCK Male Grooming"/>
+  <img class="logo" src="/logo.png" alt="SHOCK Male Grooming" draggable="false"/>
   <h1>It&#39;s time to SHOCK</h1>
   <p class="sub">Evoluzione in corso</p>
   <div class="cd" id="cd"></div>
