@@ -64,22 +64,28 @@
     var st = document.createElement('style');
     st.id = 'shock-dev-css';
     st.textContent =
-      '#' + WIDGET_ID + '{padding:0 12px}' +
-      '#sd-live{margin-bottom:6px}' +
+      '#' + WIDGET_ID + '{padding:10px 12px;border-top:1px solid rgba(255,255,255,.06);' +
+      'border-bottom:1px solid rgba(255,255,255,.06);margin-bottom:4px}' +
+      '#sd-live{margin-bottom:8px}' +
       '#sd-live:empty{display:none}' +
-      '.sd-row{display:flex;align-items:center;gap:8px;padding:5px 12px;font-size:.78rem;' +
+      '.sd-row{display:flex;align-items:center;gap:8px;padding:5px 4px;font-size:.78rem;' +
       'color:rgba(255,255,255,.55)}' +
       '.sd-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;box-shadow:0 0 0 3px currentColor22}' +
       '.sd-row .sd-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
       '.sd-row .sd-me{color:rgba(255,255,255,.3);font-size:.68rem}' +
       '.sd-row .sd-time{font-size:.68rem;color:rgba(255,255,255,.32);flex-shrink:0}' +
-      '.sd-devbtn{display:flex;align-items:center;gap:10px;width:100%;padding:10px 12px;' +
-      'border-radius:10px;border:none;cursor:pointer;background:transparent;' +
-      'color:rgba(255,255,255,.45);font-size:.85rem;font-weight:500;text-align:left;' +
-      'font-family:inherit;transition:background .15s,color .15s}' +
-      '.sd-devbtn:hover{background:rgba(255,255,255,.05);color:rgba(255,255,255,.7)}' +
-      '.sd-devbtn.sd-active{color:#c9a84c}' +
+      /* banner: verde spento, rosso con aura quando la modalita' dev e' attiva */
+      '.sd-devbtn{display:flex;align-items:center;gap:10px;width:100%;padding:11px 14px;' +
+      'border-radius:12px;cursor:pointer;font-size:.83rem;font-weight:700;text-align:left;' +
+      'font-family:inherit;transition:background .25s,color .25s,border-color .25s,box-shadow .25s;' +
+      'background:rgba(34,197,94,.12);border:1.5px solid rgba(34,197,94,.4);color:#4ade80}' +
+      '.sd-devbtn:hover{background:rgba(34,197,94,.18)}' +
       '.sd-devbtn .sd-ic{font-size:1rem;width:20px;text-align:center;flex-shrink:0}' +
+      '.sd-devbtn.sd-active{background:rgba(239,68,68,.16);border-color:rgba(239,68,68,.55);' +
+      'color:#f87171;animation:sdPulse 2.2s ease-in-out infinite}' +
+      '.sd-devbtn.sd-active:hover{background:rgba(239,68,68,.22)}' +
+      '@keyframes sdPulse{0%,100%{box-shadow:0 0 12px 1px rgba(239,68,68,.28)}' +
+      '50%{box-shadow:0 0 22px 5px rgba(239,68,68,.5)}}' +
       /* overlay del pannello modale */
       '.sd-ov{position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:99999;display:flex;' +
       'align-items:center;justify-content:center;padding:20px}' +
@@ -283,15 +289,20 @@
 
   function mount() {
     if (!pwd()) return; // non ancora autenticato
+    css(); // il banner deve essere gia' stilato al primo disegno, non solo aprendo il pannello
     var logout = findLogoutBtn();
-    if (!logout || !logout.parentNode) return;
+    // footer = il blocco che contiene Logout e "Sito pubblico" insieme;
+    // il widget va sopra QUEL blocco intero, non solo sopra Logout.
+    var footer = logout && logout.parentNode;
+    var outer = footer && footer.parentNode;
+    if (!footer || !outer) return;
     var existing = document.getElementById(WIDGET_ID);
     if (existing) {
       // React puo' aver ricostruito il footer: ci riposizioniamo se serve.
-      if (existing.nextSibling !== logout) logout.parentNode.insertBefore(existing, logout);
+      if (existing.nextSibling !== footer) outer.insertBefore(existing, footer);
       return;
     }
-    logout.parentNode.insertBefore(buildWidget(), logout);
+    outer.insertBefore(buildWidget(), footer);
     renderLive(lastSessions);
     poll();
   }
