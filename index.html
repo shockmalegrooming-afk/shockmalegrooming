@@ -257,11 +257,24 @@ function build(cont){
 }
 // sync() e' idempotente: ricostruisce se React ha buttato via il wrapper,
 // e ri-aggancia il carosello se React lo ha rimpiazzato con un nodo nuovo.
+// Il pulsante "Vedi tutti i prodotti" e' renderizzato SOPRA il carosello:
+// ha senso solo dopo aver scorso i prodotti, quindi lo spostiamo sotto.
+// Sta dentro sync() cosi' torna al posto giusto anche se React ri-renderizza.
+function moveCta(){
+  if(!wrap||!wrap.parentNode)return;
+  var a=document.querySelector('a.btn-accent[href="/prodotti"]');
+  if(!a)return;
+  var box=a.parentNode;                 // il div che lo centra e ne tiene i margini
+  if(!box||box===wrap||box.contains(wrap))return;   // mai spostare un antenato
+  if(wrap.nextSibling===box)return;                 // gia' subito sotto: niente da fare
+  wrap.parentNode.insertBefore(box,wrap.nextSibling);
+}
 function sync(){
   var cont=live();if(!cont)return;
   if(!wrap||!document.contains(wrap)){build(cont);}
   else if(cont.parentNode!==wrap){wrap.insertBefore(cont,wrap.firstChild);}
   if(!cont._carBound){cont._carBound=1;cont.addEventListener('scroll',updateArrows,{passive:true});}
+  moveCta();
   updateArrows();
 }
 window.addEventListener('resize',updateArrows);
