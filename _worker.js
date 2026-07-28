@@ -1046,16 +1046,16 @@ body{margin:0;min-height:100vh;background:#0a0908;color:#f0ece5;
  display:flex;align-items:center;justify-content:center;text-align:center;padding:34px 20px;
  background-image:radial-gradient(ellipse at 50% -10%,rgba(201,168,76,.13),transparent 62%)}
 .box{width:100%;max-width:660px}
-img.logo{height:56px;width:auto;display:block;margin:0 auto 36px}
+img.logo{height:56px;width:auto;display:block;margin:0 auto 18px}
 h1{font-family:var(--font-brand,inherit);font-weight:700;text-transform:uppercase;color:#fff;
- font-size:clamp(1.55rem,5.4vw,2.7rem);letter-spacing:.14em;line-height:1.2;margin:0 0 20px}
-.sub{font-size:.74rem;letter-spacing:.34em;text-transform:uppercase;color:#c9a84c;margin:0 0 48px}
+ font-size:clamp(1.55rem,5.4vw,2.7rem);letter-spacing:.14em;line-height:1.2;margin:0 0 10px}
+.sub{font-size:.74rem;letter-spacing:.34em;text-transform:uppercase;color:#c9a84c;margin:0 0 26px}
 .cd{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
 .u{flex:1 1 0;min-width:74px;max-width:132px;background:rgba(255,255,255,.04);
- border:1px solid rgba(255,255,255,.09);border-radius:14px;padding:18px 8px}
+ border:1px solid rgba(255,255,255,.09);border-radius:14px;padding:14px 8px}
 .n{font-family:var(--font-brand,inherit);font-weight:700;color:#fff;line-height:1;
  font-size:clamp(1.7rem,6vw,2.6rem);font-variant-numeric:tabular-nums}
-.l{font-size:.6rem;letter-spacing:.2em;text-transform:uppercase;color:rgba(240,236,229,.42);margin-top:9px}
+.l{font-size:.6rem;letter-spacing:.2em;text-transform:uppercase;color:rgba(240,236,229,.42);margin-top:6px}
 .done{font-family:var(--font-brand,inherit);font-size:1.1rem;color:#c9a84c;
  letter-spacing:.18em;text-transform:uppercase;margin:0}
 </style>
