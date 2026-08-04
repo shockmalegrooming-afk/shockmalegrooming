@@ -4,6 +4,22 @@ const CORS = {
   "Access-Control-Allow-Headers": "Content-Type, X-Admin-Password",
 };
 
+// Soglie del programma punti: [punti richiesti, sconto in euro].
+// La STESSA tabella e' anche scritta a mano nel pannello admin e nella
+// pagina punti del cliente (bundle React minificati, non modificabili
+// qui in modo sicuro) — se cambiano le une vanno cambiate anche qui,
+// altrimenti il server rifiuta richieste legittime. Questa e' pero'
+// l'unica copia che CONTA per davvero: e' quella che decide se creare
+// lo sconto o no.
+const PUNTI_TIERS = [
+  [50, 3],
+  [100, 6],
+  [250, 15],
+  [500, 28],
+  [1000, 55],
+  [2000, 100],
+];
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -696,6 +712,15 @@ async function handlePunti(request, env) {
     const { token, points: ptsToRedeem, amount } = await request.json().catch(() => ({}));
     if (!token || !ptsToRedeem || !amount) {
       return new Response(JSON.stringify({ error: "Parametri mancanti" }), { status: 400, headers: { "Content-Type": "application/json", ...CORS } });
+    }
+
+    // Il client mandava punti/importo a piacere e il server si fidava:
+    // chiunque poteva chiedere uno sconto enorme per pochi punti aprendo
+    // i tool sviluppatore. La combinazione deve corrispondere ESATTAMENTE
+    // a una soglia reale, verificata qui, non solo mostrata nell'interfaccia.
+    const validTier = PUNTI_TIERS.some(([p, e]) => p === ptsToRedeem && e === amount);
+    if (!validTier) {
+      return new Response(JSON.stringify({ error: "Combinazione punti/sconto non valida" }), { status: 400, headers: { "Content-Type": "application/json", ...CORS } });
     }
 
     const customerId = await getCustomerIdFromToken(token);
