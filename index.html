@@ -83,6 +83,18 @@ video::-webkit-media-controls,video::-webkit-media-controls-enclosure,video::-we
   #barbieri h3{text-align:center}
   #barbieri .r-1col>div:first-child>div:first-child>div:last-child{text-align:center}
   #barbieri .r-1col>div:last-child form>p:first-child{text-align:center}
+  /* Footer: logo/descrizione/social, colonne Prodotti e Info, riga
+     GDPR, riga finale copyright+link. Un solo <footer> in pagina,
+     nessun bisogno di un id. */
+  footer .r-1col>div:nth-child(1){text-align:center}
+  footer .r-1col>div:nth-child(1)>div{justify-content:center}
+  footer .r-1col>div:nth-child(2)>p,
+  footer .r-1col>div:nth-child(3)>p{text-align:center}
+  footer .r-1col>div:nth-child(2)>div,
+  footer .r-1col>div:nth-child(3)>div{align-items:center}
+  footer>div>div:nth-child(2){text-align:center}
+  footer>div>div:nth-child(3){flex-direction:column!important;justify-content:center!important;text-align:center}
+  footer>div>div:nth-child(3)>div{justify-content:center!important}
   /* Card oro "Raccolta punti" (renderizzata solo da React, nessun id
      disponibile: aggancio via colore, unico in pagina). Questo nodo lo
      crea React lato client, non il server: il browser riscrive lo
