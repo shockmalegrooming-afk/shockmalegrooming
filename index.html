@@ -60,8 +60,29 @@ video::-webkit-media-controls,video::-webkit-media-controls-enclosure,video::-we
 @media(max-width:768px){
   /* "Il Brand" (sezione ingredienti) */
   #ingredienti .r-1col>div:first-child{text-align:center}
+  /* Card "Ingredienti Naturali / Made in Italy / Testato in Salone" */
+  #ingredienti .r-1col>div:last-child>div{text-align:center}
   /* Intestazione recensioni ("Lo dicono i nostri clienti.") */
   #recensioni>div>div:first-child>div:first-child{text-align:center}
+  /* Card di ogni recensione: stelle e testo al centro, riga
+     avatar+nome centrata come gruppo (l'avatar resta a fianco al nome,
+     non sopra: e' un abbinamento standard, non solo testo isolato) */
+  #recensioni .r-1col>div{text-align:center}
+  #recensioni .r-1col>div>div:last-child{justify-content:center!important}
+  #recensioni .r-1col>div>div:last-child>div:last-child{text-align:center}
+  /* Sezione "Sei un barbiere?": renderizzata solo da React (l'HTML
+     statico qui e' superato, mostra "30%" mentre React mostra "-40%")
+     — niente valori di stile da inseguire, ci si aggancia con #barbieri
+     e la posizione dei figli, che non cambiano con SSR/CSR. */
+  #barbieri .r-1col>div:first-child>div:first-child>div:first-child>div{
+    flex-direction:column!important;align-items:center!important;text-align:center!important;gap:6px!important
+  }
+  #barbieri .r-1col>div:first-child>div:first-child>div:not(:first-child):not(:last-child){
+    flex-direction:column!important;align-items:center!important;text-align:center!important;gap:8px!important
+  }
+  #barbieri h3{text-align:center}
+  #barbieri .r-1col>div:first-child>div:first-child>div:last-child{text-align:center}
+  #barbieri .r-1col>div:last-child form>p:first-child{text-align:center}
   /* Card oro "Raccolta punti" (renderizzata solo da React, nessun id
      disponibile: aggancio via colore, unico in pagina). Questo nodo lo
      crea React lato client, non il server: il browser riscrive lo
