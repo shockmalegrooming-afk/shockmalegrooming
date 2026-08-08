@@ -52,6 +52,22 @@ video::-webkit-media-controls,video::-webkit-media-controls-enclosure,video::-we
 .lbl::before,.lbl-dark::before{display:none!important}
 /* Nicer scroll-hint */
 .scroll-hint{justify-content:center!important;font-size:0.68rem!important;letter-spacing:0.22em!important;color:rgba(255,255,255,0.3)!important;margin-bottom:20px!important;text-transform:uppercase!important;gap:0!important;user-select:none}
+/* Testi centrati su mobile: da telefono i blocchi che su desktop sono
+   la meta' sinistra di un layout a due colonne (etichetta/titolo/testo/
+   bottone) restano allineati a sinistra anche impilati a piena
+   larghezza, e sembrano spostati su un lato. Solo su mobile: il
+   layout a due colonne su desktop resta com'e', probabilmente voluto. */
+@media(max-width:768px){
+  /* "Il Brand" (sezione ingredienti) */
+  #ingredienti .r-1col>div:first-child{text-align:center}
+  /* Intestazione recensioni ("Lo dicono i nostri clienti.") */
+  #recensioni>div>div:first-child>div:first-child{text-align:center}
+  /* Card oro "Raccolta punti" (renderizzata solo da React, nessun id
+     disponibile: aggancio via colore, unico in pagina) */
+  div[style*="rgba(201,168,76,0.13)"]{justify-content:center!important;text-align:center}
+  div[style*="rgba(201,168,76,0.13)"]>div:first-child{text-align:center;width:100%}
+  div[style*="rgba(201,168,76,0.13)"]>div:first-child>div:first-child{justify-content:center!important}
+}
 /* --- HERO: niente mutazioni del DOM prima dell'hydration ---
    React renderizza i cerchi decorativi sfocati e la seconda colonna del
    grid; noi non li vogliamo. Nasconderli via CSS invece che via JS
