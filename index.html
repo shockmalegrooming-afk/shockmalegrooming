@@ -63,10 +63,16 @@ video::-webkit-media-controls,video::-webkit-media-controls-enclosure,video::-we
   /* Intestazione recensioni ("Lo dicono i nostri clienti.") */
   #recensioni>div>div:first-child>div:first-child{text-align:center}
   /* Card oro "Raccolta punti" (renderizzata solo da React, nessun id
-     disponibile: aggancio via colore, unico in pagina) */
-  div[style*="rgba(201,168,76,0.13)"]{justify-content:center!important;text-align:center}
-  div[style*="rgba(201,168,76,0.13)"]>div:first-child{text-align:center;width:100%}
-  div[style*="rgba(201,168,76,0.13)"]>div:first-child>div:first-child{justify-content:center!important}
+     disponibile: aggancio via colore, unico in pagina). Questo nodo lo
+     crea React lato client, non il server: il browser riscrive lo
+     stile passando per il CSSOM e inserisce uno spazio dopo ogni
+     virgola/due punti ("rgba(201, 168, 76, 0.13)"), diverso da come lo
+     scrive il server ("rgba(201,168,76,0.13)", senza spazi) — serve
+     l'attributo CON gli spazi, altrimenti il selettore non aggancia
+     nulla. */
+  div[style*="rgba(201, 168, 76, 0.13)"]{justify-content:center!important;text-align:center}
+  div[style*="rgba(201, 168, 76, 0.13)"]>div:first-child{text-align:center;width:100%}
+  div[style*="rgba(201, 168, 76, 0.13)"]>div:first-child>div:first-child{justify-content:center!important}
 }
 /* --- HERO: niente mutazioni del DOM prima dell'hydration ---
    React renderizza i cerchi decorativi sfocati e la seconda colonna del
@@ -75,7 +81,9 @@ video::-webkit-media-controls,video::-webkit-media-controls-enclosure,video::-we
    (era una delle cause del React error #418) e continua a funzionare
    anche quando React ricostruisce la sezione. Il selettore e' esatto
    per non colpire l'overlay del video, che ha anche background e z-index. */
-main>section:first-of-type>div[style*="pointer-events:none"]:not([style*="background"]){display:none!important}
+main>section:first-of-type>div[style*="pointer-events:none"]:not([style*="background"]),
+main>section:first-of-type>div[style*="pointer-events: none"]:not([style*="background"])
+{display:none!important}
 main>section:first-of-type>.r-1col>div:nth-child(n+2){display:none!important}
 /* Carousel arrow buttons */
 .carousel-wrap{position:relative;overflow:visible!important}
