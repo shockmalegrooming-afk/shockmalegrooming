@@ -95,6 +95,11 @@ video::-webkit-media-controls,video::-webkit-media-controls-enclosure,video::-we
   footer>div>div:nth-child(2){text-align:center}
   footer>div>div:nth-child(3){flex-direction:column!important;justify-content:center!important;text-align:center}
   footer>div>div:nth-child(3)>div{justify-content:center!important}
+  /* Card prodotto nel carosello della home. #prod-carousel e' un id
+     vero (gia' usato per le frecce), non serve inseguire stili. */
+  #prod-carousel>div>div:last-child{text-align:center}
+  #prod-carousel>div>div:last-child>div:first-child{justify-content:center}
+  #prod-carousel>div>div:last-child>div:last-child{justify-content:center!important}
   /* Card oro "Raccolta punti" (renderizzata solo da React, nessun id
      disponibile: aggancio via colore, unico in pagina). Questo nodo lo
      crea React lato client, non il server: il browser riscrive lo
