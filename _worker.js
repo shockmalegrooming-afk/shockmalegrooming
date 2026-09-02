@@ -365,12 +365,19 @@ async function handleTestSendcloud(request, env) {
     const mJ = await mR.json().catch(() => ({}));
     const methods = mJ.shipping_methods || [];
     const itHome = methods.filter((m) => (m.service_point_input === "none" || !m.service_point_input) && (m.countries || []).some((c) => (c.iso_2 || "").toUpperCase() === "IT"));
+    // Corrieri che supportano il ritiro (pickup) via API Sendcloud v3: brt, poste_it_delivery, gls_it, dhl*, dpd*, fedex, ups, correos*, hermes_de
+    const PICKUP_CARRIERS = ["brt", "poste", "gls", "dhl", "dpd", "fedex", "ups", "correos", "hermes"];
+    const carriersUsed = [...new Set(methods.map((m) => (m.carrier || "").toLowerCase()).filter(Boolean))];
+    const pickupCarriers = carriersUsed.filter((c) => PICKUP_CARRIERS.some((k) => c.includes(k)));
     return labelJson({
       ok: true,
       addresses,
       methods_total: methods.length,
       methods_it_home: itHome.length,
       sample: itHome.slice(0, 3).map((m) => m.name),
+      carriers_used: carriersUsed,
+      pickup_possibile: pickupCarriers.length > 0,
+      pickup_corrieri: pickupCarriers,
     });
   } catch (e) {
     return labelJson({ ok: false, error: String(e).slice(0, 200) });
