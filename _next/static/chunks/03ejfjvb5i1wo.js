@@ -20,11 +20,39 @@ function openEdit(p){var v=p.variants&&p.variants[0]||{};var price=parseFloat(v.
 function save(){if(!ed)return;setBusy(!0);var full=parseFloat(ed._full||0);var d=ed._disc!==""&&ed._disc!=null?parseFloat(ed._disc):null;var useDisc=d!=null&&d>0&&d<full;var v0=ed.variants[0];var variant=useDisc?{id:v0.id,price:d.toFixed(2),compare_at_price:full.toFixed(2)}:{id:v0.id,price:full.toFixed(2),compare_at_price:null};r.adminFetch("products/"+ed.id+".json",{method:"PUT",body:JSON.stringify({product:{id:ed.id,title:ed.title,body_html:ed.body_html,status:ed.status,variants:[variant]}})}).then(function(){setMsg("Salvato! Premi 🔄 Aggiorna nell'anteprima.");load();setPrevK(function(k){return k+1;});}).catch(function(){setMsg("Errore nel salvataggio");}).finally(function(){setBusy(!1);setTimeout(function(){setMsg("");},4000);});}
 function create(){setBusy(!0);r.adminFetch("products.json",{method:"POST",body:JSON.stringify({product:{title:nf.title,body_html:nf.body_html,status:nf.status,variants:[{price:nf.price}],...(nf.imgUrl?{images:[{src:nf.imgUrl}]}:{})}})}).then(function(){setMsg("Prodotto creato!");setShowNew(!1);setNf({title:"",price:"",body_html:"",status:"active",imgUrl:""});load();}).catch(function(){setMsg("Errore nella creazione");}).finally(function(){setBusy(!1);setTimeout(function(){setMsg("");},3000);});}
 function del(id){if(!confirm("Eliminare questo prodotto? Azione irreversibile."))return;setBusy(!0);r.adminFetch("products/"+id+".json",{method:"DELETE"}).then(function(){setMsg("Prodotto eliminato!");load();}).catch(function(){setMsg("Errore nell'eliminazione");}).finally(function(){setBusy(!1);setTimeout(function(){setMsg("");},3000);});}
+function applyMarketingDiscount(){
+if(!list||!list.length)return;
+var targets=list.filter(function(p){
+if(p.status!=="active")return!1;
+var v=p.variants&&p.variants[0];
+if(!v)return!1;
+var price=parseFloat(v.price||0),cmp=parseFloat(v.compare_at_price||0);
+if(!(price>0))return!1;
+if(cmp>price)return!1;
+return p.id%10<6;
+});
+if(!targets.length){setMsg("Nessun prodotto idoneo trovato");setTimeout(function(){setMsg("");},3000);return;}
+if(!confirm("Verrà alzato solo il prezzo barrato (di listino) su "+targets.length+" prodotti su "+list.length+" attivi. Il prezzo che paga il cliente resta esattamente quello attuale. Gli altri "+(list.length-targets.length)+" prodotti restano invariati (per non renderlo troppo evidente). Continuare?"))return;
+setBusy(!0);setMsg("Applico sconti marketing...");
+var ok=0,fail=0,chain=Promise.resolve();
+targets.forEach(function(p){
+chain=chain.then(function(){
+var v=p.variants[0],price=parseFloat(v.price||0),pct=12+p.id%11,raw=price*(1+pct/100),cents=Math.round((price-Math.floor(price))*100)/100,full=Math.floor(raw)+cents;
+if(full<=price)full=price+1+cents;
+return r.adminFetch("products/"+p.id+".json",{method:"PUT",body:JSON.stringify({product:{id:p.id,variants:[{id:v.id,price:price.toFixed(2),compare_at_price:full.toFixed(2)}]}})}).then(function(){ok++;}).catch(function(){fail++;});
+});
+});
+chain.then(function(){
+setBusy(!1);setMsg("");
+alert("Fatto: "+ok+" prodotti aggiornati"+(fail?", "+fail+" falliti":"")+" su "+targets.length+".\nIl prezzo pagato dai clienti NON cambia, solo il prezzo barrato sopra.");
+load();
+});
+}
 if(loading)return jsx(Loading,{});
 var ef=ed?parseFloat(ed._full||0):0,edi=ed&&ed._disc!==""&&ed._disc!=null?parseFloat(ed._disc):null,edPct=edi!=null&&edi>0&&edi<ef?Math.round((1-edi/ef)*100):0;
 var pvSrc=ed?(prevView==="prodotti"?"/prodotti?_="+prevK:prevView==="home"?"/?_="+prevK:"/prodotto?handle="+encodeURIComponent(ed.handle||"")+"&_="+prevK):"";
 return jsxs("div",{children:[
-jsxs("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:24},children:[jsx("h2",{style:H2,children:"Prodotti"}),jsx("button",{style:BTN,onClick:function(){setShowNew(!0);},children:"+ Nuovo Prodotto"})]}),
+jsxs("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:24},children:[jsx("h2",{style:H2,children:"Prodotti"}),jsxs("div",{style:{display:"flex",gap:8},children:[jsx("button",{style:{...BTN,background:"transparent",border:"1px solid rgba(255,255,255,0.2)"},disabled:busy,onClick:applyMarketingDiscount,children:"🏷️ Sconto marketing"}),jsx("button",{style:BTN,onClick:function(){setShowNew(!0);},children:"+ Nuovo Prodotto"})]})]}),
 msg&&jsx("div",{style:{background:"rgba(0,119,168,0.2)",border:"1px solid rgba(0,119,168,0.4)",borderRadius:8,padding:"10px 16px",marginBottom:16,color:"#fff",fontSize:"0.85rem"},children:msg}),
 showNew&&jsx("div",{style:OVL,children:jsxs("div",{style:MODAL,children:[
 jsx("h3",{style:{color:"#fff",marginBottom:20,fontSize:"1rem"},children:"Nuovo Prodotto"}),
