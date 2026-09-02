@@ -313,7 +313,15 @@ async function handleManualTracking(request, env) {
   const shHeaders = { "Content-Type": "application/json", "X-Shopify-Access-Token": env.SHOPIFY_ADMIN_TOKEN };
 
   const foResp = await fetch(`${base}/orders/${orderId}/fulfillment_orders.json`, { headers: shHeaders });
-  const { fulfillment_orders } = await foResp.json();
+  const foBody = await foResp.json().catch(() => ({}));
+  if (!foResp.ok) {
+    // Non scambiare un errore di Shopify (permessi mancanti, ordine
+    // inesistente, rate limit) per "ordine gia' spedito o annullato":
+    // e' un messaggio diverso e fuorviante, che nasconde la causa vera.
+    const msg = typeof foBody.errors === "string" ? foBody.errors : JSON.stringify(foBody.errors || foBody);
+    return labelJson({ error: "Shopify (lettura spedizioni): " + msg.slice(0, 200) }, 502);
+  }
+  const { fulfillment_orders } = foBody;
   const open = (fulfillment_orders || []).filter((f) => f.status === "open" || f.status === "in_progress");
   const use = open.length ? open : (fulfillment_orders || []);
   if (!use.length) return labelJson({ error: "Nessun articolo da evadere (ordine già spedito o annullato)" }, 400);
@@ -527,7 +535,14 @@ async function handleCreateLabel(request, env) {
   if (tracking) {
     try {
       const foResp = await fetch(`${base}/orders/${orderId}/fulfillment_orders.json`, { headers: shHeaders });
-      const { fulfillment_orders } = await foResp.json();
+      const foBody = await foResp.json().catch(() => ({}));
+      if (!foResp.ok) {
+        // Non lasciare fulfillError vuoto: senza questo, un errore di
+        // Shopify (permessi, rate limit) sparisce in silenzio e sembra
+        // solo "non evaso", senza dire perche'.
+        throw new Error(typeof foBody.errors === "string" ? foBody.errors : JSON.stringify(foBody.errors || foBody));
+      }
+      const { fulfillment_orders } = foBody;
       const open = (fulfillment_orders || []).filter((f) => f.status === "open" || f.status === "in_progress");
       const use = open.length ? open : (fulfillment_orders || []);
       if (use.length) {
