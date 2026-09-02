@@ -14,7 +14,9 @@ var _l5=uS(!1),showNew=_l5[0],setShowNew=_l5[1];
 var _l6=uS(0),prevK=_l6[0],setPrevK=_l6[1];
 var _l7=uS({title:"",price:"",body_html:"",status:"active",imgUrl:""}),nf=_l7[0],setNf=_l7[1];
 var _l8=uS("scheda"),prevView=_l8[0],setPrevView=_l8[1];
-function load(){setLoading(!0);r.adminFetch("products.json?fields=id,title,handle,status,body_html,variants,images").then(function(d){setList(d.products||[]);}).finally(function(){setLoading(!1);});}
+var _l9=uS({}),sel=_l9[0],setSel=_l9[1];
+function hasMktTag(p){return(p.tags||"").split(",").map(function(s){return s.trim().toLowerCase();}).indexOf("sconto-marketing")>=0;}
+function load(){setLoading(!0);r.adminFetch("products.json?fields=id,title,handle,status,body_html,variants,images,tags").then(function(d){setList(d.products||[]);}).finally(function(){setLoading(!1);});}
 uE(function(){load();},[]);
 function openEdit(p){var v=p.variants&&p.variants[0]||{};var price=parseFloat(v.price||0),cmp=parseFloat(v.compare_at_price||0);var full=cmp>price?cmp:price;var disc=cmp>price?String(price):"";var bh=p.body_html||"";if(isGeneric(bh)&&SUGGEST[p.handle])bh=SUGGEST[p.handle];setEd({...p,body_html:bh,_full:String(full),_disc:disc});setPrevView("scheda");setPrevK(function(k){return k+1;});}
 function save(){if(!ed)return;setBusy(!0);var full=parseFloat(ed._full||0);var d=ed._disc!==""&&ed._disc!=null?parseFloat(ed._disc):null;var useDisc=d!=null&&d>0&&d<full;var v0=ed.variants[0];var variant=useDisc?{id:v0.id,price:d.toFixed(2),compare_at_price:full.toFixed(2)}:{id:v0.id,price:full.toFixed(2),compare_at_price:null};r.adminFetch("products/"+ed.id+".json",{method:"PUT",body:JSON.stringify({product:{id:ed.id,title:ed.title,body_html:ed.body_html,status:ed.status,variants:[variant]}})}).then(function(){setMsg("Salvato! Premi 🔄 Aggiorna nell'anteprima.");load();setPrevK(function(k){return k+1;});}).catch(function(){setMsg("Errore nel salvataggio");}).finally(function(){setBusy(!1);setTimeout(function(){setMsg("");},4000);});}
@@ -22,29 +24,51 @@ function create(){setBusy(!0);r.adminFetch("products.json",{method:"POST",body:J
 function del(id){if(!confirm("Eliminare questo prodotto? Azione irreversibile."))return;setBusy(!0);r.adminFetch("products/"+id+".json",{method:"DELETE"}).then(function(){setMsg("Prodotto eliminato!");load();}).catch(function(){setMsg("Errore nell'eliminazione");}).finally(function(){setBusy(!1);setTimeout(function(){setMsg("");},3000);});}
 function applyMarketingDiscount(){
 if(!list||!list.length)return;
+var ids=Object.keys(sel).filter(function(k){return sel[k];}).map(Number);
+if(!ids.length){setMsg("Seleziona con la casella almeno un prodotto");setTimeout(function(){setMsg("");},3000);return;}
 var targets=list.filter(function(p){
-if(p.status!=="active")return!1;
+if(ids.indexOf(p.id)<0)return!1;
+if(hasMktTag(p))return!1;
 var v=p.variants&&p.variants[0];
 if(!v)return!1;
 var price=parseFloat(v.price||0),cmp=parseFloat(v.compare_at_price||0);
-if(!(price>0))return!1;
-if(cmp>price)return!1;
-return p.id%10<6;
+return price>0&&!(cmp>price);
 });
-if(!targets.length){setMsg("Nessun prodotto idoneo trovato");setTimeout(function(){setMsg("");},3000);return;}
-if(!confirm("Verrà alzato solo il prezzo barrato (di listino) su "+targets.length+" prodotti su "+list.length+" attivi. Il prezzo che paga il cliente resta esattamente quello attuale. Gli altri "+(list.length-targets.length)+" prodotti restano invariati (per non renderlo troppo evidente). Continuare?"))return;
+if(!targets.length){setMsg("I prodotti selezionati hanno già uno sconto attivo o non sono validi");setTimeout(function(){setMsg("");},3000);return;}
+if(!confirm("Verrà alzato solo il prezzo barrato (di listino) su "+targets.length+" prodotti selezionati. Il prezzo che paga il cliente resta esattamente quello attuale. Continuare?"))return;
 setBusy(!0);setMsg("Applico sconti marketing...");
 var ok=0,fail=0,chain=Promise.resolve();
 targets.forEach(function(p){
 chain=chain.then(function(){
 var v=p.variants[0],price=parseFloat(v.price||0),pct=12+p.id%11,raw=price*(1+pct/100),cents=Math.round((price-Math.floor(price))*100)/100,full=Math.floor(raw)+cents;
 if(full<=price)full=price+1+cents;
-return r.adminFetch("products/"+p.id+".json",{method:"PUT",body:JSON.stringify({product:{id:p.id,variants:[{id:v.id,price:price.toFixed(2),compare_at_price:full.toFixed(2)}]}})}).then(function(){ok++;}).catch(function(){fail++;});
+var tags=((p.tags||"")+",sconto-marketing").split(",").map(function(s){return s.trim();}).filter(Boolean).filter(function(v,i,a){return a.indexOf(v)===i;}).join(", ");
+return r.adminFetch("products/"+p.id+".json",{method:"PUT",body:JSON.stringify({product:{id:p.id,tags:tags,variants:[{id:v.id,price:price.toFixed(2),compare_at_price:full.toFixed(2)}]}})}).then(function(){ok++;}).catch(function(){fail++;});
+});
+});
+chain.then(function(){
+setBusy(!1);setMsg("");setSel({});
+alert("Fatto: "+ok+" prodotti aggiornati"+(fail?", "+fail+" falliti":"")+" su "+targets.length+".\nIl prezzo pagato dai clienti NON cambia, solo il prezzo barrato sopra.");
+load();
+});
+}
+function disableMarketingDiscount(){
+if(!list||!list.length)return;
+var targets=list.filter(hasMktTag);
+if(!targets.length){setMsg("Nessuno sconto marketing attivo al momento");setTimeout(function(){setMsg("");},3000);return;}
+if(!confirm("Disattivo lo sconto marketing su "+targets.length+" prodotti: torna a mostrare un unico prezzo, senza prezzo barrato. Continuare?"))return;
+setBusy(!0);setMsg("Disattivo sconti marketing...");
+var ok=0,fail=0,chain=Promise.resolve();
+targets.forEach(function(p){
+chain=chain.then(function(){
+var v=p.variants[0];
+var tags=(p.tags||"").split(",").map(function(s){return s.trim();}).filter(function(t){return t&&t.toLowerCase()!=="sconto-marketing";}).join(", ");
+return r.adminFetch("products/"+p.id+".json",{method:"PUT",body:JSON.stringify({product:{id:p.id,tags:tags,variants:[{id:v.id,compare_at_price:null}]}})}).then(function(){ok++;}).catch(function(){fail++;});
 });
 });
 chain.then(function(){
 setBusy(!1);setMsg("");
-alert("Fatto: "+ok+" prodotti aggiornati"+(fail?", "+fail+" falliti":"")+" su "+targets.length+".\nIl prezzo pagato dai clienti NON cambia, solo il prezzo barrato sopra.");
+alert("Disattivato su "+ok+" prodotti"+(fail?", "+fail+" falliti":"")+".");
 load();
 });
 }
@@ -52,7 +76,8 @@ if(loading)return jsx(Loading,{});
 var ef=ed?parseFloat(ed._full||0):0,edi=ed&&ed._disc!==""&&ed._disc!=null?parseFloat(ed._disc):null,edPct=edi!=null&&edi>0&&edi<ef?Math.round((1-edi/ef)*100):0;
 var pvSrc=ed?(prevView==="prodotti"?"/prodotti?_="+prevK:prevView==="home"?"/?_="+prevK:"/prodotto?handle="+encodeURIComponent(ed.handle||"")+"&_="+prevK):"";
 return jsxs("div",{children:[
-jsxs("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:24},children:[jsx("h2",{style:H2,children:"Prodotti"}),jsxs("div",{style:{display:"flex",gap:8},children:[jsx("button",{style:{...BTN,background:"transparent",border:"1px solid rgba(255,255,255,0.2)"},disabled:busy,onClick:applyMarketingDiscount,children:"🏷️ Sconto marketing"}),jsx("button",{style:BTN,onClick:function(){setShowNew(!0);},children:"+ Nuovo Prodotto"})]})]}),
+jsxs("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:24},children:[jsx("h2",{style:H2,children:"Prodotti"}),jsxs("div",{style:{display:"flex",gap:8},children:[jsx("button",{style:{...BTN,background:"transparent",border:"1px solid rgba(239,68,68,0.3)",color:"#ef4444"},disabled:busy,onClick:disableMarketingDiscount,children:"🚫 Disattiva sconti marketing"}),jsx("button",{style:{...BTN,background:"transparent",border:"1px solid rgba(255,255,255,0.2)"},disabled:busy,onClick:applyMarketingDiscount,children:"🏷️ Applica sconto marketing"+(function(){var n=Object.keys(sel).filter(function(k){return sel[k];}).length;return n?" ("+n+")":"";})()}),jsx("button",{style:BTN,onClick:function(){setShowNew(!0);},children:"+ Nuovo Prodotto"})]})]}),
+jsx("p",{style:{fontSize:"0.72rem",color:"rgba(255,255,255,0.35)",marginBottom:12,marginTop:-16},children:"Spunta i prodotti a cui applicare lo sconto marketing (prezzo barrato più alto, prezzo pagato invariato), poi premi \"Applica sconto marketing\"."}),
 msg&&jsx("div",{style:{background:"rgba(0,119,168,0.2)",border:"1px solid rgba(0,119,168,0.4)",borderRadius:8,padding:"10px 16px",marginBottom:16,color:"#fff",fontSize:"0.85rem"},children:msg}),
 showNew&&jsx("div",{style:OVL,children:jsxs("div",{style:MODAL,children:[
 jsx("h3",{style:{color:"#fff",marginBottom:20,fontSize:"1rem"},children:"Nuovo Prodotto"}),
@@ -83,9 +108,10 @@ jsx("p",{style:{color:"rgba(255,255,255,0.3)",fontSize:"0.7rem",marginTop:8},chi
 ]})
 ]})
 ]})}),
-jsx("div",{style:{display:"flex",flexDirection:"column",gap:10},children:list.map(function(p){var v=p.variants&&p.variants[0]||{};var price=parseFloat(v.price||0),cmp=parseFloat(v.compare_at_price||0),onSale=cmp>price;return jsxs("div",{style:{...CARD,display:"flex",alignItems:"center",gap:16},children:[
+jsx("div",{style:{display:"flex",flexDirection:"column",gap:10},children:list.map(function(p){var v=p.variants&&p.variants[0]||{};var price=parseFloat(v.price||0),cmp=parseFloat(v.compare_at_price||0),onSale=cmp>price,isMkt=hasMktTag(p);return jsxs("div",{style:{...CARD,display:"flex",alignItems:"center",gap:16},children:[
+jsx("input",{type:"checkbox",checked:!!sel[p.id],onChange:function(){setSel(function(s){var n={...s};if(n[p.id])delete n[p.id];else n[p.id]=!0;return n;});},title:"Includi nello sconto marketing",style:{width:18,height:18,flexShrink:0,cursor:"pointer"}}),
 p.images&&p.images[0]?jsx("img",{src:p.images[0].src,alt:p.title,style:{width:56,height:56,objectFit:"cover",borderRadius:8,flexShrink:0}}):jsx("div",{style:{width:56,height:56,borderRadius:8,background:"rgba(0,119,168,0.2)",flexShrink:0}}),
-jsxs("div",{style:{flex:1},children:[jsx("p",{style:{color:"#fff",fontWeight:600,fontSize:"0.9rem"},children:p.title}),jsxs("p",{style:{color:"rgba(255,255,255,0.4)",fontSize:"0.78rem",marginTop:2},children:[onSale?jsxs("span",{children:[jsxs("span",{style:{textDecoration:"line-through",opacity:.6},children:["€",cmp.toFixed(2)]})," ",jsxs("span",{style:{color:"#4CAF50",fontWeight:700},children:["€",price.toFixed(2)]})]}):jsxs("span",{children:["€",v.price]})," · Scorte: ",v.inventory_quantity," · ",jsx("span",{style:{color:"active"===p.status?"#4CAF50":"#FFA000"},children:"active"===p.status?"Attivo":"Bozza"})]})]}),
+jsxs("div",{style:{flex:1},children:[jsxs("p",{style:{color:"#fff",fontWeight:600,fontSize:"0.9rem"},children:[p.title,isMkt?jsx("span",{style:{marginLeft:8,fontSize:"0.65rem",color:"#c9a84c",border:"1px solid rgba(201,168,76,0.4)",borderRadius:6,padding:"1px 6px"},children:"sconto marketing"}):null]}),jsxs("p",{style:{color:"rgba(255,255,255,0.4)",fontSize:"0.78rem",marginTop:2},children:[onSale?jsxs("span",{children:[jsxs("span",{style:{textDecoration:"line-through",opacity:.6},children:["€",cmp.toFixed(2)]})," ",jsxs("span",{style:{color:"#4CAF50",fontWeight:700},children:["€",price.toFixed(2)]})]}):jsxs("span",{children:["€",v.price]})," · Scorte: ",v.inventory_quantity," · ",jsx("span",{style:{color:"active"===p.status?"#4CAF50":"#FFA000"},children:"active"===p.status?"Attivo":"Bozza"})]})]}),
 jsx("button",{style:PILL,onClick:function(){openEdit(p);},children:"Modifica"}),
 jsx("button",{style:{...PILL,background:"rgba(239,68,68,0.12)",color:"#ef4444",border:"1px solid rgba(239,68,68,0.25)"},onClick:function(){del(p.id);},children:"Elimina"})
 ]},p.id);})})

@@ -38,6 +38,24 @@
   .filters{display:flex;gap:8px;flex-wrap:wrap}
   .chip{background:transparent;border:1px solid rgba(255,255,255,.14);color:rgba(240,236,229,.6);border-radius:100px;padding:7px 16px;font-size:.76rem;cursor:pointer;transition:all .2s;font-family:var(--font-b,sans-serif)}
   .chip.on{background:#f0ece5;color:#0a0908;border-color:#f0ece5;font-weight:600}
+  /* bundle */
+  .bundles{display:flex;flex-direction:column;gap:16px;margin:0 0 30px}
+  .bundles-h{font-size:1.15rem;margin:0 0 4px;font-weight:700}
+  .bundle-card{background:linear-gradient(135deg,rgba(201,168,76,.1),rgba(255,255,255,.02));border:1px solid rgba(201,168,76,.35);border-radius:18px;padding:20px;display:flex;gap:20px;flex-wrap:wrap;align-items:center}
+  .bundle-card .thumb{width:110px;height:110px;border-radius:12px;overflow:hidden;flex-shrink:0;background:#141312}
+  .bundle-card .thumb img{width:100%;height:100%;object-fit:cover;display:block}
+  .bundle-info{flex:1;min-width:220px}
+  .bundle-info h3{margin:0 0 6px;font-size:1.08rem}
+  .bundle-info p.desc{color:rgba(240,236,229,.55);font-size:.83rem;margin:0 0 10px;line-height:1.5}
+  .bundle-price{display:flex;align-items:baseline;gap:10px;margin-bottom:12px}
+  .bundle-price .was{text-decoration:line-through;opacity:.5;font-size:.88rem}
+  .bundle-price .now{font-size:1.35rem;font-weight:800;color:#c9a84c}
+  .bundle-items{display:flex;gap:8px;flex-wrap:wrap}
+  .bundle-item{display:flex;align-items:center;gap:7px;background:rgba(255,255,255,.05);border-radius:100px;padding:4px 12px 4px 4px;text-decoration:none;color:inherit;font-size:.76rem}
+  .bundle-item img{width:26px;height:26px;border-radius:50%;object-fit:cover;display:block}
+  .bundle-add{background:#c9a84c;color:#0a0908;border:none;border-radius:100px;padding:12px 26px;font-weight:700;font-size:.8rem;cursor:pointer;white-space:nowrap;font-family:var(--font-b,sans-serif)}
+  .bundle-add:disabled{opacity:.6;cursor:default}
+  @media(max-width:600px){.bundle-card{flex-direction:column;align-items:stretch;text-align:center}.bundle-card .thumb{width:100%;height:160px;margin:0 auto}.bundle-items{justify-content:center}}
   /* grid */
   .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:22px;padding-bottom:80px}
   .card{background:#141312;border:1px solid rgba(255,255,255,.06);border-radius:16px;overflow:hidden;display:flex;flex-direction:column;transition:transform .25s,border-color .25s;text-decoration:none;color:inherit}
@@ -92,6 +110,7 @@
       <span class="count" id="count"></span>
       <div class="filters" id="filters"></div>
     </div>
+    <div class="bundles" id="bundles"></div>
     <div class="grid" id="grid">
       <div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div>
     </div>
@@ -112,10 +131,10 @@
   document.getElementById("yr").textContent=new Date().getFullYear();
   var money=window.ShockShop.money;
   var grid=document.getElementById("grid"),countEl=document.getElementById("count"),filtersEl=document.getElementById("filters");
-  var all=[],activeType="Tutti";
+  var all=[],bundles=[],activeType="Tutti";
 
   var Q="{products(first:100,sortKey:BEST_SELLING){edges{node{"+
-    "id handle title productType description availableForSale totalInventory "+
+    "id handle title productType description descriptionHtml availableForSale totalInventory "+
     "featuredImage{url altText} "+
     "images(first:1){edges{node{url}}} "+
     "priceRange{minVariantPrice{amount currencyCode}} "+
@@ -194,9 +213,57 @@
     countEl.textContent=list.length+(list.length===1?" prodotto":" prodotti");
   }
 
+  function bundleCard(b){
+    var handles=[];
+    var m=b.descriptionHtml&&b.descriptionHtml.match(/<!--bundle-components:(.*?)-->/);
+    if(m){try{handles=JSON.parse(m[1])||[];}catch(e){handles=[];}}
+    var items=handles.map(function(h){return all.find(function(p){return p.handle===h;});}).filter(Boolean);
+    var price=b.priceRange.minVariantPrice;
+    var cmp=b.compareAtPriceRange&&b.compareAtPriceRange.minVariantPrice;
+    var onSale=cmp&&parseFloat(cmp.amount)>parseFloat(price.amount);
+    var totalComponents=items.length?items.reduce(function(s,p){return s+parseFloat(p.priceRange.minVariantPrice.amount);},0):null;
+    var img=(b.featuredImage&&b.featuredImage.url)||(b.images.edges[0]&&b.images.edges[0].node.url)||"";
+    var variant=b.variants.edges[0]&&b.variants.edges[0].node;
+    var itemsHtml=items.map(function(p){
+      var pi=(p.featuredImage&&p.featuredImage.url)||(p.images.edges[0]&&p.images.edges[0].node.url)||"";
+      return '<a class="bundle-item" href="/prodotto?handle='+encodeURIComponent(p.handle)+'">'+(pi?'<img src="'+pi+'" alt="">':'')+esc(p.title)+'</a>';
+    }).join("");
+    var div=document.createElement("div");
+    div.className="bundle-card";
+    div.innerHTML=
+      '<div class="thumb">'+(img?'<img src="'+img+'" alt="'+esc(b.title)+'">':'')+'</div>'+
+      '<div class="bundle-info">'+
+        '<h3>'+esc(b.title)+'</h3>'+
+        '<p class="desc">'+esc(excerpt(b.description,140))+'</p>'+
+        '<div class="bundle-price">'+
+          (totalComponents!=null?'<span class="was">'+money(totalComponents,price.currencyCode)+'</span>':(onSale?'<span class="was">'+money(cmp.amount,cmp.currencyCode)+'</span>':''))+
+          '<span class="now">'+money(price.amount,price.currencyCode)+'</span>'+
+        '</div>'+
+        (itemsHtml?'<div class="bundle-items">'+itemsHtml+'</div>':'')+
+      '</div>'+
+      '<button class="bundle-add" '+(variant&&variant.availableForSale?'':'disabled')+'>Aggiungi al carrello</button>';
+    var btn=div.querySelector(".bundle-add");
+    btn.addEventListener("click",function(){
+      if(!variant)return;
+      btn.disabled=true;btn.textContent="✓ Aggiunto";
+      window.ShockShop.addAndOpen(variant.id,1).finally(function(){setTimeout(function(){btn.disabled=false;btn.textContent="Aggiungi al carrello";},900);});
+    });
+    return div;
+  }
+  function renderBundles(){
+    var el=document.getElementById("bundles");
+    el.innerHTML="";
+    if(!bundles.length)return;
+    var h=document.createElement("h2");h.className="bundles-h";h.textContent="Bundle & Offerte";
+    el.appendChild(h);
+    bundles.forEach(function(b){el.appendChild(bundleCard(b));});
+  }
+
   window.ShockShop.sfetch(Q).then(function(d){
-    all=(d.products.edges||[]).map(function(e){return e.node;});
-    renderFilters();renderGrid();
+    var nodes=(d.products.edges||[]).map(function(e){return e.node;});
+    bundles=nodes.filter(function(p){return p.productType==="Bundle";});
+    all=nodes.filter(function(p){return p.productType!=="Bundle";});
+    renderFilters();renderGrid();renderBundles();
   }).catch(function(err){
     grid.innerHTML='<div class="empty">Impossibile caricare i prodotti.<br><span style="font-size:.75rem;opacity:.6">'+(err.message||"")+'</span></div>';
   });
