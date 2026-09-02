@@ -69,6 +69,10 @@ export default {
       return handlePunti(request, env);
     }
 
+    if (pathname === "/api/generate-bundle-desc") {
+      return handleGenerateBundleDesc(request, env);
+    }
+
     if (pathname === "/api/dev/enter") return devEnter(request, env);
     if (pathname === "/api/dev/exit") return devExit(request, env);
     if (pathname === "/api/dev/state") return devState(request, env);
@@ -381,6 +385,52 @@ async function handleTestSendcloud(request, env) {
     });
   } catch (e) {
     return labelJson({ ok: false, error: String(e).slice(0, 200) });
+  }
+}
+
+// Genera una descrizione marketing per un bundle usando Groq (AI), a partire
+// dal nome del bundle e dai prodotti inclusi. Usata dal pulsante
+// "Genera descrizione con AI" nella scheda Bundle del pannello admin.
+async function handleGenerateBundleDesc(request, env) {
+  const pwd = request.headers.get("X-Admin-Password");
+  if (!pwd || pwd !== env.ADMIN_PASSWORD) return labelJson({ error: "Non autorizzato" }, 401);
+  if (!env.GROQ_API_KEY) {
+    return labelJson({ error: "Chiave Groq non configurata su Cloudflare (GROQ_API_KEY)" }, 400);
+  }
+  const { name, products } = await request.json().catch(() => ({}));
+  if (!name || !Array.isArray(products) || products.length < 2) {
+    return labelJson({ error: "Servono un nome e almeno 2 prodotti" }, 400);
+  }
+  const prompt =
+    `Scrivi una descrizione marketing breve (massimo 3 frasi, 40-60 parole) in italiano per un bundle di prodotti di grooming maschile chiamato "${name}", ` +
+    `che contiene questi prodotti: ${products.join(", ")}. ` +
+    `Il tono deve essere professionale ma diretto, adatto a un e-commerce italiano di cosmetica maschile da salone/barbiere. ` +
+    `Spiega perché questi prodotti funzionano bene insieme (routine logica, es. lavaggio poi cura poi styling), senza inventare ingredienti o proprietà specifiche non menzionate. ` +
+    `Non usare virgolette, non ripetere il nome del bundle nel testo, restituisci solo il testo della descrizione senza titoli o elenchi puntati.`;
+  try {
+    const r = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${env.GROQ_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: "llama-3.3-70b-versatile",
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.7,
+        max_tokens: 200,
+      }),
+    });
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      const msg = body.error?.message || JSON.stringify(body).slice(0, 200);
+      return labelJson({ error: "Groq: " + msg }, 502);
+    }
+    const text = body.choices?.[0]?.message?.content?.trim();
+    if (!text) return labelJson({ error: "Risposta AI vuota" }, 502);
+    return labelJson({ description: `<p>${text}</p>` });
+  } catch (e) {
+    return labelJson({ error: String(e).slice(0, 200) }, 500);
   }
 }
 

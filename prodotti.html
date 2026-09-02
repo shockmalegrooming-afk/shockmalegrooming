@@ -231,10 +231,10 @@
     var div=document.createElement("div");
     div.className="bundle-card";
     div.innerHTML=
-      '<div class="thumb">'+(img?'<img src="'+img+'" alt="'+esc(b.title)+'">':'')+'</div>'+
+      (img?'<div class="thumb"><img src="'+img+'" alt="'+esc(b.title)+'"></div>':'')+
       '<div class="bundle-info">'+
         '<h3>'+esc(b.title)+'</h3>'+
-        '<p class="desc">'+esc(excerpt(b.description,140))+'</p>'+
+        '<p class="desc">'+esc(b.description||"")+'</p>'+
         '<div class="bundle-price">'+
           (totalComponents!=null?'<span class="was">'+money(totalComponents,price.currencyCode)+'</span>':(onSale?'<span class="was">'+money(cmp.amount,cmp.currencyCode)+'</span>':''))+
           '<span class="now">'+money(price.amount,price.currencyCode)+'</span>'+

@@ -354,4 +354,91 @@ window.addEventListener('load',function(){
   }
 });
 })();</script>
-<script>(function(){function kick(){var vs=document.getElementsByTagName("video");for(var i=0;i<vs.length;i++){var v=vs[i];try{v.muted=!0;v.setAttribute("muted","");v.playsInline=!0;v.setAttribute("playsinline","");v.removeAttribute("controls");var p=v.play();if(p&&p.catch)p.catch(function(){})}catch(e){}}}window.addEventListener("load",function(){kick();setTimeout(kick,500);setTimeout(kick,1500)});["touchstart","touchend","click","scroll","pointerdown","keydown"].forEach(function(ev){document.addEventListener(ev,kick,{passive:!0})});document.addEventListener("visibilitychange",function(){document.hidden||kick()})})();</script><script src="/shock-shop.js?v=5"></script><script src="/shock-eye.js?v=1"></script><script src="/shock-nodrag.js?v=1"></script></body></html>
+<script>(function(){function kick(){var vs=document.getElementsByTagName("video");for(var i=0;i<vs.length;i++){var v=vs[i];try{v.muted=!0;v.setAttribute("muted","");v.playsInline=!0;v.setAttribute("playsinline","");v.removeAttribute("controls");var p=v.play();if(p&&p.catch)p.catch(function(){})}catch(e){}}}window.addEventListener("load",function(){kick();setTimeout(kick,500);setTimeout(kick,1500)});["touchstart","touchend","click","scroll","pointerdown","keydown"].forEach(function(ev){document.addEventListener(ev,kick,{passive:!0})});document.addEventListener("visibilitychange",function(){document.hidden||kick()})})();</script><script src="/shock-shop.js?v=5"></script><style>
+#home-bundles:empty{display:none}
+.hb-wrap{max-width:1200px;margin:0 auto;padding:60px 40px}
+.hb-title{text-align:center;font-family:var(--font-h),sans-serif;font-size:1.8rem;font-weight:700;color:#fff;margin-bottom:8px}
+.hb-sub{text-align:center;color:rgba(255,255,255,0.4);font-size:0.9rem;margin-bottom:32px}
+.hb-card{background:linear-gradient(135deg,rgba(201,168,76,.12),rgba(255,255,255,.02));border:1px solid rgba(201,168,76,.35);border-radius:18px;padding:24px;display:flex;gap:22px;flex-wrap:wrap;align-items:center;max-width:900px;margin:0 auto 18px}
+.hb-card .thumb{width:110px;height:110px;border-radius:12px;overflow:hidden;flex-shrink:0;background:#141312}
+.hb-card .thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.hb-info{flex:1;min-width:220px}
+.hb-info h3{margin:0 0 6px;font-size:1.1rem;color:#fff;font-family:var(--font-h),sans-serif}
+.hb-info p.desc{color:rgba(255,255,255,.5);font-size:.85rem;margin:0 0 10px;line-height:1.5}
+.hb-price{display:flex;align-items:baseline;gap:10px;margin-bottom:12px}
+.hb-price .was{text-decoration:line-through;opacity:.5;font-size:.9rem;color:#fff}
+.hb-price .now{font-size:1.4rem;font-weight:800;color:#c9a84c}
+.hb-items{display:flex;gap:8px;flex-wrap:wrap}
+.hb-item{display:flex;align-items:center;gap:7px;background:rgba(255,255,255,.06);border-radius:100px;padding:4px 12px 4px 4px;text-decoration:none;color:#fff;font-size:.76rem}
+.hb-item img{width:26px;height:26px;border-radius:50%;object-fit:cover;display:block}
+.hb-add{background:#c9a84c;color:#0a0908;border:none;border-radius:100px;padding:12px 26px;font-weight:700;font-size:.8rem;cursor:pointer;white-space:nowrap;font-family:inherit}
+.hb-add:disabled{opacity:.6;cursor:default}
+@media(max-width:600px){.hb-card{flex-direction:column;align-items:stretch;text-align:center}.hb-card .thumb{width:100%;height:160px;margin:0 auto}.hb-items{justify-content:center}}
+</style>
+<script>
+(function(){
+  function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];});}
+  function money(amount){return parseFloat(amount||0).toFixed(2).replace(".",",")+" €";}
+  var prodSection=document.getElementById("prodotti");
+  if(!prodSection)return;
+  var host=document.createElement("div");host.id="home-bundles";
+  prodSection.insertAdjacentElement("afterend",host);
+  var Q="{products(first:100){edges{node{"+
+    "id handle title productType description descriptionHtml availableForSale "+
+    "featuredImage{url altText} images(first:1){edges{node{url}}} "+
+    "priceRange{minVariantPrice{amount currencyCode}} "+
+    "compareAtPriceRange{minVariantPrice{amount currencyCode}} "+
+    "variants(first:1){edges{node{id availableForSale}}}"+
+    "}}}}";
+  fetch("https://shock-male-grooming.myshopify.com/api/2024-01/graphql.json",{method:"POST",headers:{"Content-Type":"application/json","X-Shopify-Storefront-Access-Token":"0a215f25881fcbcbd0a0a7d8405b7ff6"},body:JSON.stringify({query:Q})})
+    .then(function(r){return r.json();})
+    .then(function(d){
+      var nodes=((d.data&&d.data.products&&d.data.products.edges)||[]).map(function(e){return e.node;});
+      var all=nodes.filter(function(p){return p.productType!=="Bundle";});
+      var bundles=nodes.filter(function(p){return p.productType==="Bundle";});
+      if(!bundles.length)return;
+      var wrap=document.createElement("div");wrap.className="hb-wrap";
+      var h=document.createElement("h2");h.className="hb-title";h.textContent="Bundle & Offerte";
+      var sub=document.createElement("p");sub.className="hb-sub";sub.textContent="Risparmia scegliendo più prodotti insieme";
+      wrap.appendChild(h);wrap.appendChild(sub);
+      bundles.forEach(function(b){
+        var handles=[];
+        var m=b.descriptionHtml&&b.descriptionHtml.match(/<!--bundle-components:(.*?)-->/);
+        if(m){try{handles=JSON.parse(m[1])||[];}catch(e){handles=[];}}
+        var items=handles.map(function(hd){return all.find(function(p){return p.handle===hd;});}).filter(Boolean);
+        var price=b.priceRange.minVariantPrice;
+        var cmp=b.compareAtPriceRange&&b.compareAtPriceRange.minVariantPrice;
+        var onSale=cmp&&parseFloat(cmp.amount)>parseFloat(price.amount);
+        var totalComponents=items.length?items.reduce(function(s,p){return s+parseFloat(p.priceRange.minVariantPrice.amount);},0):null;
+        var img=(b.featuredImage&&b.featuredImage.url)||(b.images.edges[0]&&b.images.edges[0].node.url)||"";
+        var variant=b.variants.edges[0]&&b.variants.edges[0].node;
+        var itemsHtml=items.map(function(p){
+          var pi=(p.featuredImage&&p.featuredImage.url)||(p.images.edges[0]&&p.images.edges[0].node.url)||"";
+          return '<a class="hb-item" href="/prodotto?handle='+encodeURIComponent(p.handle)+'">'+(pi?'<img src="'+pi+'" alt="">':'')+esc(p.title)+'</a>';
+        }).join("");
+        var card=document.createElement("div");card.className="hb-card";
+        card.innerHTML=
+          (img?'<div class="thumb"><img src="'+img+'" alt="'+esc(b.title)+'"></div>':'')+
+          '<div class="hb-info">'+
+            '<h3>'+esc(b.title)+'</h3>'+
+            '<p class="desc">'+esc(b.description||"")+'</p>'+
+            '<div class="hb-price">'+
+              (totalComponents!=null?'<span class="was">'+money(totalComponents)+'</span>':(onSale?'<span class="was">'+money(cmp.amount)+'</span>':''))+
+              '<span class="now">'+money(price.amount)+'</span>'+
+            '</div>'+
+            (itemsHtml?'<div class="hb-items">'+itemsHtml+'</div>':'')+
+          '</div>'+
+          '<button class="hb-add" '+(variant&&variant.availableForSale?'':'disabled')+'>Aggiungi al carrello</button>';
+        var btn=card.querySelector(".hb-add");
+        btn.addEventListener("click",function(){
+          if(!variant||!window.ShockShop)return;
+          btn.disabled=true;btn.textContent="✓ Aggiunto";
+          window.ShockShop.addAndOpen(variant.id,1).finally(function(){setTimeout(function(){btn.disabled=false;btn.textContent="Aggiungi al carrello";},900);});
+        });
+        wrap.appendChild(card);
+      });
+      host.appendChild(wrap);
+    }).catch(function(){});
+})();
+</script>
+<script src="/shock-eye.js?v=1"></script><script src="/shock-nodrag.js?v=1"></script></body></html>
