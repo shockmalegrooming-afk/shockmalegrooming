@@ -73,6 +73,14 @@ export default {
       return handleGenerateBundleDesc(request, env);
     }
 
+    if (pathname === "/api/ambassador/settings") return handleAmbassadorSettings(request, env);
+    if (pathname === "/api/ambassador/list") return handleAmbassadorList(request, env);
+    if (pathname === "/api/ambassador/create") return handleAmbassadorCreate(request, env);
+    if (pathname === "/api/ambassador/toggle") return handleAmbassadorToggle(request, env);
+    if (pathname === "/api/ambassador/agreement") return handleAmbassadorAgreement(request, env);
+    if (pathname === "/api/ambassador/next-coupon") return handleAmbassadorNextCoupon(request, env);
+    if (pathname === "/api/ambassador/me") return handleAmbassadorMe(request, env);
+
     if (pathname === "/api/dev/enter") return devEnter(request, env);
     if (pathname === "/api/dev/exit") return devExit(request, env);
     if (pathname === "/api/dev/state") return devState(request, env);
@@ -858,6 +866,477 @@ async function handlePunti(request, env) {
   }
 
   return new Response("Method not allowed", { status: 405, headers: CORS });
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   PROGRAMMA AMBASSADOR
+   Ogni Ambassador e' un cliente Shopify vero, creato solo dall'admin
+   (nessuna registrazione pubblica), con tag "ambassador" + un metafield
+   JSON (namespace "ambassador", key "profile") che contiene tutto il
+   resto: codice personale, regione, dati per il contratto, stato,
+   coupon fornitura successiva gia' emessi. I codici sconto sono veri
+   price_rule/discount_code Shopify (stessa API gia' usata dal programma
+   punti), quindi funzionano su qualsiasi piano Shopify, non solo Plus.
+   ═══════════════════════════════════════════════════════════════════ */
+
+const KV_AMBASSADOR_SETTINGS = "config:ambassador";
+const AMBASSADOR_SETTINGS_DEFAULT = {
+  pricing_mode: "percent", // "percent" | "fixed" — "fixed" richiede un listino prodotto per prodotto, non ancora implementato
+  store_discount_pct: 20, // sconto % per il "prezzo da negozio" (codice personale)
+  next_supply_pct: 15, // [X%] dell'Art. 2.3: coupon sulla fornitura successiva
+  first_order_mode: "amount", // "kit" | "amount"
+  first_order_kit_desc: "",
+  first_order_max_amount: 300,
+  foro_competente: "Terni",
+};
+
+async function getAmbassadorSettings(env) {
+  const store = kv(env);
+  let cfg = AMBASSADOR_SETTINGS_DEFAULT;
+  if (store) {
+    const v = await store.get(KV_AMBASSADOR_SETTINGS);
+    if (v) {
+      try {
+        cfg = { ...AMBASSADOR_SETTINGS_DEFAULT, ...JSON.parse(v) };
+      } catch (_) {}
+    }
+  }
+  return cfg;
+}
+
+async function handleAmbassadorSettings(request, env) {
+  if (request.method === "GET") {
+    return jsonRes(await getAmbassadorSettings(env));
+  }
+  if (request.method === "POST") {
+    const pwd = request.headers.get("X-Admin-Password") || "";
+    if (!env.ADMIN_PASSWORD || pwd !== env.ADMIN_PASSWORD) return jsonRes({ error: "Non autorizzato" }, 401);
+    const store = kv(env);
+    if (!store) return jsonRes({ error: "Memoria KV non collegata: le impostazioni non possono essere salvate" }, 501);
+    let body = {};
+    try {
+      body = await request.json();
+    } catch (_) {}
+    const cfg = {
+      pricing_mode: body.pricing_mode === "fixed" ? "fixed" : "percent",
+      store_discount_pct: Math.max(0, Math.min(90, parseFloat(body.store_discount_pct) || 0)),
+      next_supply_pct: Math.max(0, Math.min(90, parseFloat(body.next_supply_pct) || 0)),
+      first_order_mode: body.first_order_mode === "kit" ? "kit" : "amount",
+      first_order_kit_desc: String(body.first_order_kit_desc || "").slice(0, 500),
+      first_order_max_amount: Math.max(0, parseFloat(body.first_order_max_amount) || 0),
+      foro_competente: String(body.foro_competente || "").slice(0, 100),
+    };
+    await store.put(KV_AMBASSADOR_SETTINGS, JSON.stringify(cfg));
+    return jsonRes({ ok: true, ...cfg });
+  }
+  return jsonRes({ error: "Metodo non consentito" }, 405);
+}
+
+function shopifyAdminBase() {
+  return "https://shock-male-grooming.myshopify.com/admin/api/2024-01";
+}
+
+async function shopifyAdminFetch(env, path, opts = {}) {
+  return fetch(`${shopifyAdminBase()}/${path}`, {
+    ...opts,
+    headers: {
+      "Content-Type": "application/json",
+      "X-Shopify-Access-Token": env.SHOPIFY_ADMIN_TOKEN,
+      ...(opts.headers || {}),
+    },
+  });
+}
+
+function slug(s) {
+  return String(s || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function ambassadorCode(shopName) {
+  const base = String(shopName || "")
+    .toUpperCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^A-Z0-9]/g, "");
+  return "SHOCK-" + (base || "AMB" + Math.random().toString(36).slice(2, 6).toUpperCase());
+}
+
+async function getAmbassadorProfileMeta(env, customerId) {
+  const mr = await shopifyAdminFetch(env, `customers/${customerId}/metafields.json?namespace=ambassador`);
+  const md = await mr.json().catch(() => ({}));
+  return (md.metafields || []).find((m) => m.key === "profile") || null;
+}
+
+async function handleAmbassadorList(request, env) {
+  const pwd = request.headers.get("X-Admin-Password") || "";
+  if (!env.ADMIN_PASSWORD || pwd !== env.ADMIN_PASSWORD) return jsonRes({ error: "Non autorizzato" }, 401);
+  const r = await shopifyAdminFetch(env, "customers/search.json?query=tag:ambassador&limit=250");
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) return jsonRes({ error: "Shopify: " + JSON.stringify(d).slice(0, 200) }, 502);
+  const out = [];
+  for (const c of d.customers || []) {
+    const meta = await getAmbassadorProfileMeta(env, c.id);
+    let profile = {};
+    if (meta) {
+      try {
+        profile = JSON.parse(meta.value) || {};
+      } catch (_) {}
+    }
+    out.push({
+      id: c.id,
+      first_name: c.first_name,
+      last_name: c.last_name,
+      email: c.email,
+      phone: c.phone,
+      created_at: c.created_at,
+      profile,
+    });
+  }
+  return jsonRes({ ambassadors: out });
+}
+
+async function handleAmbassadorCreate(request, env) {
+  const pwd = request.headers.get("X-Admin-Password") || "";
+  if (!env.ADMIN_PASSWORD || pwd !== env.ADMIN_PASSWORD) return jsonRes({ error: "Non autorizzato" }, 401);
+  const body = await request.json().catch(() => ({}));
+  const { first_name, last_name, email, phone, region, piva, indirizzo, cap_citta, nome_negozio } = body;
+  if (!first_name || !last_name || !email || !region || !nome_negozio) {
+    return jsonRes({ error: "Nome, cognome, email, regione e nome negozio sono obbligatori" }, 400);
+  }
+
+  const regionSlug = slug(region);
+  const existingR = await shopifyAdminFetch(env, `customers/search.json?query=tag:ambassador-regione-${regionSlug}&limit=10`);
+  const existingD = await existingR.json().catch(() => ({}));
+  const existingActive = (existingD.customers || []).filter((c) => {
+    const tags = (c.tags || "").split(",").map((t) => t.trim());
+    return tags.includes("ambassador") && !tags.includes("ambassador-sospeso");
+  });
+  if (existingActive.length >= 2) {
+    return jsonRes({ error: `Ci sono già ${existingActive.length} Ambassador attivi per "${region}" (limite: 2 per regione)` }, 400);
+  }
+
+  const settings = await getAmbassadorSettings(env);
+
+  const tags = ["ambassador", `ambassador-regione-${regionSlug}`].join(", ");
+  const custRes = await shopifyAdminFetch(env, "customers.json", {
+    method: "POST",
+    body: JSON.stringify({ customer: { first_name, last_name, email, phone: phone || undefined, tags, verified_email: true } }),
+  });
+  const custData = await custRes.json().catch(() => ({}));
+  if (!custRes.ok || !custData.customer) {
+    const msg = custData.errors ? JSON.stringify(custData.errors) : "errore sconosciuto";
+    return jsonRes({ error: "Shopify (creazione cliente): " + msg.slice(0, 300) }, 502);
+  }
+  const customerId = custData.customer.id;
+  const code = ambassadorCode(nome_negozio);
+
+  // Codice "prezzo da negozio": sconto permanente e riutilizzabile dai clienti dell'Ambassador
+  let storePriceRuleId = null;
+  if (settings.pricing_mode === "percent" && settings.store_discount_pct > 0) {
+    const prRes = await shopifyAdminFetch(env, "price_rules.json", {
+      method: "POST",
+      body: JSON.stringify({
+        price_rule: {
+          title: code,
+          target_type: "line_item",
+          target_selection: "all",
+          allocation_method: "across",
+          value_type: "percentage",
+          value: String(-settings.store_discount_pct),
+          customer_selection: "all",
+          usage_limit: null,
+          starts_at: new Date().toISOString(),
+        },
+      }),
+    });
+    const prData = await prRes.json().catch(() => ({}));
+    storePriceRuleId = prData.price_rule?.id;
+    if (storePriceRuleId) {
+      await shopifyAdminFetch(env, `price_rules/${storePriceRuleId}/discount_codes.json`, {
+        method: "POST",
+        body: JSON.stringify({ discount_code: { code } }),
+      });
+    }
+  }
+
+  // Codice primo ordine: -60% una tantum sul listino riservato (Art. 2.2)
+  const firstCode = code + "-PRIMO60";
+  const firstPrRes = await shopifyAdminFetch(env, "price_rules.json", {
+    method: "POST",
+    body: JSON.stringify({
+      price_rule: {
+        title: firstCode,
+        target_type: "line_item",
+        target_selection: "all",
+        allocation_method: "across",
+        value_type: "percentage",
+        value: "-60.0",
+        customer_selection: "all",
+        once_per_customer: true,
+        usage_limit: 1,
+        starts_at: new Date().toISOString(),
+      },
+    }),
+  });
+  const firstPrData = await firstPrRes.json().catch(() => ({}));
+  const firstPriceRuleId = firstPrData.price_rule?.id;
+  if (firstPriceRuleId) {
+    await shopifyAdminFetch(env, `price_rules/${firstPriceRuleId}/discount_codes.json`, {
+      method: "POST",
+      body: JSON.stringify({ discount_code: { code: firstCode } }),
+    });
+  }
+
+  const profile = {
+    code,
+    region,
+    piva: piva || "",
+    indirizzo: indirizzo || "",
+    cap_citta: cap_citta || "",
+    nome_negozio,
+    status: "active",
+    store_price_rule_id: storePriceRuleId,
+    store_discount_pct: settings.store_discount_pct,
+    first_order_price_rule_id: firstPriceRuleId || null,
+    first_order_code: firstPriceRuleId ? firstCode : null,
+    foro_competente: settings.foro_competente || "",
+    created_at: new Date().toISOString(),
+    next_coupons: [],
+  };
+  await shopifyAdminFetch(env, `customers/${customerId}/metafields.json`, {
+    method: "POST",
+    body: JSON.stringify({ metafield: { namespace: "ambassador", key: "profile", value: JSON.stringify(profile), type: "json" } }),
+  });
+
+  return jsonRes({ ok: true, customer_id: customerId, profile });
+}
+
+async function handleAmbassadorToggle(request, env) {
+  const pwd = request.headers.get("X-Admin-Password") || "";
+  if (!env.ADMIN_PASSWORD || pwd !== env.ADMIN_PASSWORD) return jsonRes({ error: "Non autorizzato" }, 401);
+  const { customer_id, suspend } = await request.json().catch(() => ({}));
+  if (!customer_id) return jsonRes({ error: "customer_id mancante" }, 400);
+
+  const custRes = await shopifyAdminFetch(env, `customers/${customer_id}.json?fields=id,tags`);
+  const custData = await custRes.json().catch(() => ({}));
+  if (!custRes.ok || !custData.customer) return jsonRes({ error: "Cliente non trovato" }, 404);
+
+  let tags = (custData.customer.tags || "").split(",").map((t) => t.trim()).filter(Boolean);
+  tags = tags.filter((t) => t !== "ambassador-sospeso");
+  if (suspend) tags.push("ambassador-sospeso");
+  await shopifyAdminFetch(env, `customers/${customer_id}.json`, {
+    method: "PUT",
+    body: JSON.stringify({ customer: { id: customer_id, tags: tags.join(", ") } }),
+  });
+
+  const meta = await getAmbassadorProfileMeta(env, customer_id);
+  if (meta) {
+    let profile = {};
+    try {
+      profile = JSON.parse(meta.value) || {};
+    } catch (_) {}
+    profile.status = suspend ? "suspended" : "active";
+    await shopifyAdminFetch(env, `metafields/${meta.id}.json`, {
+      method: "PUT",
+      body: JSON.stringify({ metafield: { id: meta.id, value: JSON.stringify(profile), type: "json" } }),
+    });
+  }
+  return jsonRes({ ok: true, suspended: !!suspend });
+}
+
+async function handleAmbassadorNextCoupon(request, env) {
+  const pwd = request.headers.get("X-Admin-Password") || "";
+  if (!env.ADMIN_PASSWORD || pwd !== env.ADMIN_PASSWORD) return jsonRes({ error: "Non autorizzato" }, 401);
+  const { customer_id, order_id, order_name } = await request.json().catch(() => ({}));
+  if (!customer_id) return jsonRes({ error: "customer_id mancante" }, 400);
+
+  const meta = await getAmbassadorProfileMeta(env, customer_id);
+  if (!meta) return jsonRes({ error: "Questo cliente non è un Ambassador" }, 404);
+  let profile = {};
+  try {
+    profile = JSON.parse(meta.value) || {};
+  } catch (_) {}
+  profile.next_coupons = profile.next_coupons || [];
+  if (order_id && profile.next_coupons.some((c) => String(c.order_id) === String(order_id))) {
+    return jsonRes({ error: "Coupon già generato per questo ordine", existing: profile.next_coupons.find((c) => String(c.order_id) === String(order_id)) }, 400);
+  }
+
+  const settings = await getAmbassadorSettings(env);
+  const code = (profile.code || "SHOCK") + "-NEXT" + Math.random().toString(36).slice(2, 6).toUpperCase();
+  const prRes = await shopifyAdminFetch(env, "price_rules.json", {
+    method: "POST",
+    body: JSON.stringify({
+      price_rule: {
+        title: code,
+        target_type: "line_item",
+        target_selection: "all",
+        allocation_method: "across",
+        value_type: "percentage",
+        value: String(-(settings.next_supply_pct || 0)),
+        customer_selection: "all",
+        once_per_customer: true,
+        usage_limit: 1,
+        starts_at: new Date().toISOString(),
+      },
+    }),
+  });
+  const prData = await prRes.json().catch(() => ({}));
+  const priceRuleId = prData.price_rule?.id;
+  if (!priceRuleId) return jsonRes({ error: "Errore creazione sconto Shopify" }, 502);
+  await shopifyAdminFetch(env, `price_rules/${priceRuleId}/discount_codes.json`, {
+    method: "POST",
+    body: JSON.stringify({ discount_code: { code } }),
+  });
+
+  profile.next_coupons.push({
+    code,
+    order_id: order_id || null,
+    order_name: order_name || null,
+    pct: settings.next_supply_pct,
+    created_at: new Date().toISOString(),
+  });
+  await shopifyAdminFetch(env, `metafields/${meta.id}.json`, {
+    method: "PUT",
+    body: JSON.stringify({ metafield: { id: meta.id, value: JSON.stringify(profile), type: "json" } }),
+  });
+
+  return jsonRes({ ok: true, code });
+}
+
+function ambassadorAgreementHtml(customer, profile, settings) {
+  const esc = (s) =>
+    String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const firstOrderText =
+    settings.first_order_mode === "kit"
+      ? `composto da ${esc(settings.first_order_kit_desc || "[kit fisso da definire]")}`
+      : `di importo fino a €${settings.first_order_max_amount} a prezzi di listino riservato`;
+  const legalName = esc(`${customer.first_name || ""} ${customer.last_name || ""}`.trim());
+  return `<!DOCTYPE html><html lang="it"><head><meta charset="utf-8">
+<title>Accordo Ambassador Shock — ${legalName}</title>
+<style>
+body{font-family:Arial,Helvetica,sans-serif;color:#1a1a1a;max-width:760px;margin:40px auto;padding:0 20px;font-size:14px;line-height:1.55}
+h1{font-size:1.6rem;margin-bottom:4px}
+.sub{color:#666;font-size:0.85rem;margin-bottom:24px}
+h2{font-size:1rem;margin-top:28px;border-bottom:1px solid #ddd;padding-bottom:4px}
+.field{margin:10px 0}
+.field b{display:inline-block;width:220px}
+.field .line{display:inline-block;border-bottom:1px solid #333;min-width:260px;padding-bottom:2px}
+.sign{display:flex;gap:60px;margin-top:30px}
+.sign>div{flex:1}
+.sign p{border-bottom:1px solid #333;margin:22px 0 4px;padding-bottom:2px;font-size:0.8rem;color:#666}
+footer{margin-top:40px;font-size:0.7rem;color:#999;text-align:center}
+.btn{position:fixed;top:16px;right:16px;background:#0077A8;color:#fff;border:none;border-radius:100px;padding:10px 20px;font-weight:700;cursor:pointer;font-size:0.85rem}
+@media print{body{margin:0}.btn{display:none}}
+</style></head><body>
+<button class="btn" onclick="window.print()">Stampa / Salva PDF</button>
+<h1>Accordo Ambassador Shock</h1>
+<p class="sub">Versione 2 · Settembre 2026</p>
+<h2>Art. 1 – Parti e oggetto</h2>
+<p>L'accordo è tra <b>SHOCK HAIR SRLS</b>, P.IVA 17983531009, con sede in Via Lugnano in Teverina 21, 05020 Lugnano in Teverina (TR) ("Shock"), e:</p>
+<div class="field"><b>Nome legale Ambassador:</b> <span class="line">${legalName}</span></div>
+<div class="field"><b>P.IVA:</b> <span class="line">${esc(profile.piva)}</span></div>
+<div class="field"><b>Sede / Indirizzo:</b> <span class="line">${esc(profile.indirizzo)}</span></div>
+<div class="field"><b>CAP e Città:</b> <span class="line">${esc(profile.cap_citta)}</span></div>
+<div class="field"><b>Nome del negozio:</b> <span class="line">${esc(profile.nome_negozio)}</span></div>
+<p>(di seguito "l'Ambassador")</p>
+<p>Shock seleziona un massimo di due barbieri per regione come Ambassador Shock. L'Ambassador riceve condizioni commerciali riservate e visibilità e, in cambio, produce contenuti social secondo l'Art. 3. Il numero limitato di posti non costituisce esclusiva territoriale, salvo diversa indicazione scritta.</p>
+<h2>Art. 2 – Cosa offre Shock</h2>
+<p><b>1. Listino riservato.</b> Per tutta la durata dell'accordo l'Ambassador acquista da Shock secondo un listino a lui dedicato, per rivendere i prodotti ai propri clienti.</p>
+<p><b>2. Primo ordine di prova.</b> Sul primo ordine l'Ambassador ha un ulteriore sconto del 60%, calcolato sul prezzo del listino riservato. Lo sconto vale per un solo ordine, ${firstOrderText}. Codice: <b>${esc(profile.first_order_code || "—")}</b>.</p>
+<p><b>3. Codice personale.</b> Shock assegna all'Ambassador un codice univoco: <b>${esc(profile.code)}</b>. I clienti dell'Ambassador che lo usano su shockmalegrooming.com ordinano al prezzo da negozio, più basso del prezzo al pubblico online. L'Ambassador può pubblicare il codice sui propri canali social. Per ogni ordine fatto con il suo codice ottiene un coupon del ${esc(settings.next_supply_pct)}% da usare sulla fornitura successiva.</p>
+<p><b>4. Area riservata.</b> Accesso a una sezione personale del sito per richiedere nuove forniture.</p>
+<p><b>5. Visibilità sui contenuti.</b> Shock può ripubblicare i contenuti dell'Ambassador sulla pagina Instagram @shockmalegrooming, che alla data della firma conta più di 50.000 follower.</p>
+<h2>Art. 3 – Cosa chiede Shock</h2>
+<p>Entro 30 giorni dalla consegna del primo ordine, l'Ambassador pubblica:</p>
+<ul><li>2 video verticali, ciascuno come Reel su Instagram e come TikTok, in cui usa o presenta i prodotti Shock nel suo negozio;</li><li>4 story su Instagram.</li></ul>
+<p>In ogni contenuto l'Ambassador tagga @shockmalegrooming e, dove la piattaforma lo consente, pubblica in collaborazione con l'account Shock. I video restano online per tutta la durata dell'accordo.</p>
+<p><b>Impegni aggiuntivi:</b></p>
+<ul><li>tenere i prodotti Shock visibili in negozio;</li><li>inviare un feedback breve sui prodotti ogni 6 mesi.</li></ul>
+<h2>Art. 4 – Regole sui contenuti</h2>
+<p>1. L'Ambassador non attribuisce ai prodotti effetti medici o terapeutici e descrive solo ciò che ha realmente provato.</p>
+<p>2. Non usa musica protetta al di fuori delle librerie commerciali messe a disposizione dalle piattaforme.</p>
+<p>3. Se nei video compaiono clienti o collaboratori, garantisce di avere il loro consenso a essere ripresi.</p>
+<p>4. Shock può chiedere la modifica o la rimozione di un contenuto lesivo del marchio. L'Ambassador provvede entro 3 giorni dalla richiesta.</p>
+<h2>Art. 5 – Diritti sui contenuti</h2>
+<p>I contenuti realizzati in collaborazione restano dell'Ambassador. Egli concede a Shock una licenza esclusiva e gratuita, valida per tutta la durata dell'accordo, per utilizzarli sui canali social, sul sito di Shock e in campagne a pagamento. Per tutta la durata dell'accordo l'Ambassador non concede gli stessi contenuti ad altri marchi; resta libero di tenerli sui propri profili. La licenza comprende l'uso del nome, della voce e dell'immagine dell'Ambassador come compaiono nei contenuti.</p>
+<h2>Art. 6 – Uso di listino e codice, riservatezza</h2>
+<p>1. Il listino riservato è strettamente personale: non può essere ceduto, condiviso o pubblicato.</p>
+<p>2. Il codice personale può essere comunicato ai clienti e pubblicato sui canali social e sul sito dell'Ambassador. Non può essere ceduto a terzi né pubblicato su siti di coupon senza consenso scritto di Shock.</p>
+<p>3. L'Ambassador può rivendere i prodotti Shock ai propri clienti nel suo negozio. Shock indica un prezzo di vendita consigliato, non vincolante.</p>
+<p>4. L'accordo non impone l'esclusiva di marca: l'Ambassador può continuare a usare altri prodotti. Nei contenuti per Shock non compaiono marchi concorrenti.</p>
+<h2>Art. 7 – Durata, verifica attività, sospensione e recesso</h2>
+<p>1. L'accordo dura 12 mesi dalla firma e si rinnova solo se Shock e l'Ambassador lo confermano per iscritto.</p>
+<p>2. Se l'Ambassador non consegna i contenuti dell'Art. 3 nei termini, Shock gli invia un avviso scritto. Trascorsi 7 giorni senza consegna, listino e codice sono sospesi finché i contenuti non sono pubblicati. Le forniture già ordinate e pagate restano dovute.</p>
+<p>3. Ciascuna parte può recedere con preavviso di 30 giorni.</p>
+<p>4. Shock può revocare subito la qualifica di Ambassador se l'Ambassador danneggia gravemente il marchio. Se l'Ambassador viola l'Art. 4 e non rimedia entro 7 giorni dalla richiesta scritta di Shock, la qualifica può essere revocata con la stessa efficacia.</p>
+<h2>Art. 8 – Disposizioni finali e firme</h2>
+<p>Ogni modifica va concordata per iscritto. I dati personali dell'Ambassador sono trattati da Shock per gestire l'accordo, secondo l'informativa privacy disponibile su shockmalegrooming.com. L'accordo è regolato dalla legge italiana.</p>
+<div class="field"><b>Foro competente (città):</b> <span class="line">${esc(profile.foro_competente)}</span></div>
+<div class="field"><b>Luogo e data di firma:</b> <span class="line">&nbsp;</span></div>
+<div class="sign">
+<div><b>Per SHOCK HAIR SRLS</b><p>Nome e cognome</p><p>Ruolo / Qualifica</p><p>Firma</p><p>Data</p></div>
+<div><b>Per l'Ambassador</b><p>Nome e cognome</p><p>Ruolo / Qualifica</p><p>Firma</p><p>Data</p></div>
+</div>
+<footer>© SHOCK HAIR SRLS – P.IVA 17983531009 – Uso riservato</footer>
+</body></html>`;
+}
+
+async function handleAmbassadorAgreement(request, env) {
+  const url = new URL(request.url);
+  const pwd = request.headers.get("X-Admin-Password") || url.searchParams.get("pwd") || "";
+  if (!env.ADMIN_PASSWORD || pwd !== env.ADMIN_PASSWORD) return new Response("Non autorizzato", { status: 401 });
+  const customerId = url.searchParams.get("id");
+  if (!customerId) return new Response("id mancante", { status: 400 });
+
+  const custRes = await shopifyAdminFetch(env, `customers/${customerId}.json?fields=id,first_name,last_name,email`);
+  const custData = await custRes.json().catch(() => ({}));
+  if (!custRes.ok || !custData.customer) return new Response("Cliente non trovato", { status: 404 });
+
+  const meta = await getAmbassadorProfileMeta(env, customerId);
+  let profile = {};
+  if (meta) {
+    try {
+      profile = JSON.parse(meta.value) || {};
+    } catch (_) {}
+  }
+  const settings = await getAmbassadorSettings(env);
+  const html = ambassadorAgreementHtml(custData.customer, profile, settings);
+  return new Response(html, { status: 200, headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" } });
+}
+
+async function getCustomerIdFromStorefrontToken(token) {
+  const res = await fetch("https://shock-male-grooming.myshopify.com/api/2024-01/graphql.json", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Shopify-Storefront-Access-Token": "0a215f25881fcbcbd0a0a7d8405b7ff6" },
+    body: JSON.stringify({ query: `query { customer(customerAccessToken: "${token}") { id } }` }),
+  });
+  const data = await res.json().catch(() => ({}));
+  const gid = data?.data?.customer?.id;
+  if (!gid) return null;
+  return gid.replace("gid://shopify/Customer/", "");
+}
+
+async function handleAmbassadorMe(request, env) {
+  const url = new URL(request.url);
+  const token = url.searchParams.get("token");
+  if (!token) return jsonRes({ error: "Token mancante" }, 400);
+  const customerId = await getCustomerIdFromStorefrontToken(token);
+  if (!customerId) return jsonRes({ error: "Token non valido" }, 401);
+
+  const meta = await getAmbassadorProfileMeta(env, customerId);
+  if (!meta) return jsonRes({ error: "Questo account non è un Ambassador Shock" }, 403);
+  let profile = {};
+  try {
+    profile = JSON.parse(meta.value) || {};
+  } catch (_) {}
+  if (profile.status !== "active") {
+    return jsonRes({ error: "Il tuo profilo Ambassador è al momento sospeso. Contatta Shock per riattivarlo." }, 403);
+  }
+  return jsonRes({ profile });
 }
 
 /* ═══════════════════════════════════════════════════════════════════
