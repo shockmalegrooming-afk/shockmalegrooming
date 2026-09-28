@@ -974,6 +974,14 @@ async function getAmbassadorProfileMeta(env, customerId) {
 async function handleAmbassadorList(request, env) {
   const pwd = request.headers.get("X-Admin-Password") || "";
   if (!env.ADMIN_PASSWORD || pwd !== env.ADMIN_PASSWORD) return jsonRes({ error: "Non autorizzato" }, 401);
+  try {
+    return await handleAmbassadorListInner(env);
+  } catch (e) {
+    return jsonRes({ error: "Errore interno (elenco Ambassador): " + String(e && e.message ? e.message : e).slice(0, 300) }, 500);
+  }
+}
+
+async function handleAmbassadorListInner(env) {
   const r = await shopifyAdminFetch(env, "customers/search.json?query=tag:ambassador&limit=250");
   const d = await r.json().catch(() => ({}));
   if (!r.ok) return jsonRes({ error: "Shopify: " + JSON.stringify(d).slice(0, 200) }, 502);
@@ -1002,10 +1010,21 @@ async function handleAmbassadorList(request, env) {
 async function handleAmbassadorCreate(request, env) {
   const pwd = request.headers.get("X-Admin-Password") || "";
   if (!env.ADMIN_PASSWORD || pwd !== env.ADMIN_PASSWORD) return jsonRes({ error: "Non autorizzato" }, 401);
+  try {
+    return await handleAmbassadorCreateInner(request, env);
+  } catch (e) {
+    return jsonRes({ error: "Errore interno (creazione Ambassador): " + String(e && e.message ? e.message : e).slice(0, 300) }, 500);
+  }
+}
+
+async function handleAmbassadorCreateInner(request, env) {
   const body = await request.json().catch(() => ({}));
   const { first_name, last_name, email, phone, region, piva, indirizzo, cap_citta, nome_negozio } = body;
   if (!first_name || !last_name || !email || !region || !nome_negozio) {
     return jsonRes({ error: "Nome, cognome, email, regione e nome negozio sono obbligatori" }, 400);
+  }
+  if (!env.SHOPIFY_ADMIN_TOKEN) {
+    return jsonRes({ error: "SHOPIFY_ADMIN_TOKEN non configurato su Cloudflare: impossibile parlare con l'Admin API di Shopify" }, 500);
   }
 
   const regionSlug = slug(region);
@@ -1118,6 +1137,14 @@ async function handleAmbassadorCreate(request, env) {
 async function handleAmbassadorToggle(request, env) {
   const pwd = request.headers.get("X-Admin-Password") || "";
   if (!env.ADMIN_PASSWORD || pwd !== env.ADMIN_PASSWORD) return jsonRes({ error: "Non autorizzato" }, 401);
+  try {
+    return await handleAmbassadorToggleInner(request, env);
+  } catch (e) {
+    return jsonRes({ error: "Errore interno (sospendi/riattiva): " + String(e && e.message ? e.message : e).slice(0, 300) }, 500);
+  }
+}
+
+async function handleAmbassadorToggleInner(request, env) {
   const { customer_id, suspend } = await request.json().catch(() => ({}));
   if (!customer_id) return jsonRes({ error: "customer_id mancante" }, 400);
 
@@ -1151,6 +1178,14 @@ async function handleAmbassadorToggle(request, env) {
 async function handleAmbassadorNextCoupon(request, env) {
   const pwd = request.headers.get("X-Admin-Password") || "";
   if (!env.ADMIN_PASSWORD || pwd !== env.ADMIN_PASSWORD) return jsonRes({ error: "Non autorizzato" }, 401);
+  try {
+    return await handleAmbassadorNextCouponInner(request, env);
+  } catch (e) {
+    return jsonRes({ error: "Errore interno (coupon fornitura): " + String(e && e.message ? e.message : e).slice(0, 300) }, 500);
+  }
+}
+
+async function handleAmbassadorNextCouponInner(request, env) {
   const { customer_id, order_id, order_name } = await request.json().catch(() => ({}));
   if (!customer_id) return jsonRes({ error: "customer_id mancante" }, 400);
 
@@ -1291,7 +1326,14 @@ async function handleAmbassadorAgreement(request, env) {
   if (!env.ADMIN_PASSWORD || pwd !== env.ADMIN_PASSWORD) return new Response("Non autorizzato", { status: 401 });
   const customerId = url.searchParams.get("id");
   if (!customerId) return new Response("id mancante", { status: 400 });
+  try {
+    return await handleAmbassadorAgreementInner(env, customerId);
+  } catch (e) {
+    return new Response("Errore interno: " + String(e && e.message ? e.message : e).slice(0, 300), { status: 500 });
+  }
+}
 
+async function handleAmbassadorAgreementInner(env, customerId) {
   const custRes = await shopifyAdminFetch(env, `customers/${customerId}.json?fields=id,first_name,last_name,email`);
   const custData = await custRes.json().catch(() => ({}));
   if (!custRes.ok || !custData.customer) return new Response("Cliente non trovato", { status: 404 });
@@ -1324,6 +1366,14 @@ async function handleAmbassadorMe(request, env) {
   const url = new URL(request.url);
   const token = url.searchParams.get("token");
   if (!token) return jsonRes({ error: "Token mancante" }, 400);
+  try {
+    return await handleAmbassadorMeInner(env, token);
+  } catch (e) {
+    return jsonRes({ error: "Errore interno: " + String(e && e.message ? e.message : e).slice(0, 300) }, 500);
+  }
+}
+
+async function handleAmbassadorMeInner(env, token) {
   const customerId = await getCustomerIdFromStorefrontToken(token);
   if (!customerId) return jsonRes({ error: "Token non valido" }, 401);
 
