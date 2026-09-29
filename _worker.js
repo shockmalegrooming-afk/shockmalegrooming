@@ -332,7 +332,7 @@ async function handleManualTracking(request, env) {
     // inesistente, rate limit) per "ordine gia' spedito o annullato":
     // e' un messaggio diverso e fuorviante, che nasconde la causa vera.
     const msg = typeof foBody.errors === "string" ? foBody.errors : JSON.stringify(foBody.errors || foBody);
-    return labelJson({ error: "Shopify (lettura spedizioni): " + msg.slice(0, 200) }, 502);
+    return labelJson({ error: "Shopify (lettura spedizioni): " + msg.slice(0, 200) }, 400);
   }
   const { fulfillment_orders } = foBody;
   const open = (fulfillment_orders || []).filter((f) => f.status === "open" || f.status === "in_progress");
@@ -354,7 +354,7 @@ async function handleManualTracking(request, env) {
     const t = await fResp.text();
     let msg = t.slice(0, 200);
     try { const j = JSON.parse(t); if (j.errors) msg = typeof j.errors === "string" ? j.errors : JSON.stringify(j.errors); } catch (e) {}
-    return labelJson({ error: "Shopify: " + msg }, 502);
+    return labelJson({ error: "Shopify: " + msg }, 400);
   }
   return labelJson({ success: true });
 }
@@ -433,10 +433,10 @@ async function handleGenerateBundleDesc(request, env) {
     const body = await r.json().catch(() => ({}));
     if (!r.ok) {
       const msg = body.error?.message || JSON.stringify(body).slice(0, 200);
-      return labelJson({ error: "Groq: " + msg }, 502);
+      return labelJson({ error: "Groq: " + msg }, 400);
     }
     const text = body.choices?.[0]?.message?.content?.trim();
-    if (!text) return labelJson({ error: "Risposta AI vuota" }, 502);
+    if (!text) return labelJson({ error: "Risposta AI vuota" }, 400);
     return labelJson({ description: `<p>${text}</p>` });
   } catch (e) {
     return labelJson({ error: String(e).slice(0, 200) }, 500);
@@ -479,7 +479,7 @@ async function handleCreateLabel(request, env) {
 
   // 1) Recupera l'ordine da Shopify (indirizzo di spedizione)
   const oResp = await fetch(`${base}/orders/${orderId}.json`, { headers: shHeaders });
-  if (!oResp.ok) return labelJson({ error: "Ordine non trovato su Shopify" }, 502);
+  if (!oResp.ok) return labelJson({ error: "Ordine non trovato su Shopify" }, 400);
   const { order } = await oResp.json();
   const sa = order.shipping_address;
   if (!sa) return labelJson({ error: "L'ordine non ha un indirizzo di spedizione" }, 400);
@@ -515,7 +515,7 @@ async function handleCreateLabel(request, env) {
     }
   } catch (e) {}
   if (!from) {
-    return labelJson({ error: "Nessun indirizzo mittente configurato su Sendcloud. Aggiungi una sede di partenza nel pannello Sendcloud." }, 502);
+    return labelJson({ error: "Nessun indirizzo mittente configurato su Sendcloud. Aggiungi una sede di partenza nel pannello Sendcloud." }, 400);
   }
 
   const dest = (sa.country_code || "IT").toUpperCase();
@@ -548,13 +548,13 @@ async function handleCreateLabel(request, env) {
   try { soJson = JSON.parse(soText); } catch (e) {}
   if (!soResp.ok) {
     const msg = (soJson.error && (soJson.error.message || soJson.error.detail)) || soText.slice(0, 300) || "Errore opzioni Sendcloud";
-    return labelJson({ error: "Sendcloud (opzioni): " + msg }, 502);
+    return labelJson({ error: "Sendcloud (opzioni): " + msg }, 400);
   }
   const options = soJson.data || [];
   const home = options.filter((o) => o.functionalities && o.functionalities.last_mile === "home_delivery");
   const chosen = home[0] || options[0];
   if (!chosen) {
-    return labelJson({ error: "Nessun metodo di spedizione a domicilio disponibile su Sendcloud per questa destinazione. Attiva un corriere (es. Poste/BRT) con consegna a domicilio." }, 502);
+    return labelJson({ error: "Nessun metodo di spedizione a domicilio disponibile su Sendcloud per questa destinazione. Attiva un corriere (es. Poste/BRT) con consegna a domicilio." }, 400);
   }
   const shipWithProps = { shipping_option_code: chosen.code };
   if (chosen.contract && chosen.contract.id != null) shipWithProps.contract_id = chosen.contract.id;
@@ -581,7 +581,7 @@ async function handleCreateLabel(request, env) {
     let msg = scText.slice(0, 300);
     if (scJson.error) msg = scJson.error.message || scJson.error.detail || msg;
     else if (Array.isArray(scJson.errors) && scJson.errors.length) msg = scJson.errors.map((x) => x.detail || x.message || x.title).filter(Boolean).join("; ");
-    return labelJson({ error: "Sendcloud: " + msg }, 502);
+    return labelJson({ error: "Sendcloud: " + msg }, 400);
   }
   const parcel = (scJson.data && scJson.data.parcels && scJson.data.parcels[0]) || {};
   const tracking = parcel.tracking_number || "";
@@ -1006,7 +1006,7 @@ async function handleAmbassadorList(request, env) {
 async function handleAmbassadorListInner(env) {
   const r = await shopifyAdminFetch(env, "customers/search.json?query=tag:ambassador&limit=250");
   const d = await r.json().catch(() => ({}));
-  if (!r.ok) return jsonRes({ error: "Shopify: " + JSON.stringify(d).slice(0, 200) }, 502);
+  if (!r.ok) return jsonRes({ error: "Shopify: " + JSON.stringify(d).slice(0, 200) }, 400);
   const out = [];
   for (const c of d.customers || []) {
     const meta = await getAmbassadorProfileMeta(env, c.id);
@@ -1070,7 +1070,7 @@ async function handleAmbassadorCreateInner(request, env) {
   const custData = await custRes.json().catch(() => ({}));
   if (!custRes.ok || !custData.customer) {
     const msg = custData.errors ? JSON.stringify(custData.errors) : "errore sconosciuto";
-    return jsonRes({ error: "Shopify (creazione cliente): " + msg.slice(0, 300) }, 502);
+    return jsonRes({ error: "Shopify (creazione cliente): " + msg.slice(0, 300) }, 400);
   }
   const customerId = custData.customer.id;
   const code = ambassadorCode(nome_negozio);
@@ -1344,7 +1344,7 @@ async function handleAmbassadorSyncSalesInner(env) {
   const settings = await getAmbassadorSettings(env);
   const ordersRes = await shopifyAdminFetch(env, "orders.json?status=any&limit=250&fields=id,name,discount_codes,line_items,created_at,cancelled_at");
   const ordersData = await ordersRes.json().catch(() => ({}));
-  if (!ordersRes.ok) return jsonRes({ error: "Shopify (lettura ordini): " + JSON.stringify(ordersData).slice(0, 200) }, 502);
+  if (!ordersRes.ok) return jsonRes({ error: "Shopify (lettura ordini): " + JSON.stringify(ordersData).slice(0, 200) }, 400);
   const orders = (ordersData.orders || []).filter((o) => !o.cancelled_at);
 
   let updated = 0;
@@ -1455,7 +1455,7 @@ async function handleAmbassadorNextCouponInner(request, env) {
   });
   const prData = await prRes.json().catch(() => ({}));
   const priceRuleId = prData.price_rule?.id;
-  if (!priceRuleId) return jsonRes({ error: "Errore creazione sconto Shopify" }, 502);
+  if (!priceRuleId) return jsonRes({ error: "Errore creazione sconto Shopify" }, 400);
   await shopifyAdminFetch(env, `price_rules/${priceRuleId}/discount_codes.json`, {
     method: "POST",
     body: JSON.stringify({ discount_code: { code } }),
