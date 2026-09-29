@@ -73,6 +73,7 @@ export default {
       return handleGenerateBundleDesc(request, env);
     }
 
+    if (pathname === "/api/debug-scopes") return handleDebugScopes(request, env);
     if (pathname === "/api/ambassador/settings") return handleAmbassadorSettings(request, env);
     if (pathname === "/api/ambassador/list") return handleAmbassadorList(request, env);
     if (pathname === "/api/ambassador/create") return handleAmbassadorCreate(request, env);
@@ -948,6 +949,22 @@ async function shopifyAdminFetch(env, path, opts = {}) {
       ...(opts.headers || {}),
     },
   });
+}
+
+// Diagnostica temporanea: chiede a Shopify quali scope ha davvero il token in
+// uso in questo momento, senza dover navigare nessuna dashboard Shopify.
+async function handleDebugScopes(request, env) {
+  const pwd = request.headers.get("X-Admin-Password") || "";
+  if (!env.ADMIN_PASSWORD || pwd !== env.ADMIN_PASSWORD) return jsonRes({ error: "Non autorizzato" }, 401);
+  try {
+    const r = await fetch("https://shock-male-grooming.myshopify.com/admin/oauth/access_scopes.json", {
+      headers: { "X-Shopify-Access-Token": env.SHOPIFY_ADMIN_TOKEN },
+    });
+    const d = await r.json().catch(() => ({}));
+    return jsonRes({ status: r.status, scopes: (d.access_scopes || []).map((s) => s.handle) });
+  } catch (e) {
+    return jsonRes({ error: String(e && e.message ? e.message : e) }, 400);
+  }
 }
 
 // Il portafoglio Ambassador usa le gift card Shopify, che si creano e si
