@@ -62,7 +62,11 @@ video::-webkit-media-controls,video::-webkit-media-controls-enclosure,video::-we
   #ingredienti .r-1col>div:first-child{text-align:center}
   /* Card "Ingredienti Naturali / Made in Italy / Testato in Salone" */
   #ingredienti .r-1col>div:last-child>div{text-align:center}
-  /* Intestazione recensioni ("Lo dicono i nostri clienti.") */
+  /* Intestazione recensioni ("Lo dicono i nostri clienti." + card 4.9):
+     la riga va centrata come gruppo, non solo il testo al suo interno
+     (altrimenti il div resta largo quanto il contenuto e centrarne il
+     testo non sposta nulla). */
+  #recensioni>div>div:first-child{justify-content:center!important;align-items:center!important;text-align:center}
   #recensioni>div>div:first-child>div:first-child{text-align:center}
   /* Card di ogni recensione: stelle e testo al centro, riga
      avatar+nome centrata come gruppo (l'avatar resta a fianco al nome,
