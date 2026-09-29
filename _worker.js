@@ -1074,140 +1074,174 @@ async function handleAmbassadorCreateInner(request, env) {
   }
   const customerId = custData.customer.id;
   const code = ambassadorCode(nome_negozio);
+  const supplyCode = code + "-FORNITURA";
+  const firstCode = code + "-PRIMO60";
+  const firstOrderTotalPct = 100 - (100 - settings.supply_discount_pct) * 0.4;
 
-  // Invito Shopify: manda una mail al nuovo Ambassador per impostare la password
-  // e poter accedere come un cliente normale (senza questo, l'account esiste ma
-  // non ha password e non può fare login né in /ambassador né ovunque altro).
-  let inviteSent = false;
-  try {
-    const inviteRes = await shopifyAdminFetch(env, `customers/${customerId}/send_invite.json`, {
-      method: "POST",
-      body: JSON.stringify({ customer_invite: {} }),
-    });
-    inviteSent = inviteRes.ok;
-  } catch (_) {}
+  // Le 5 operazioni qui sotto sono indipendenti tra loro (nessuna usa il
+  // risultato di un'altra): le lanciamo in parallelo invece che una dopo
+  // l'altra. In sequenza erano 9-10 chiamate a Shopify una dietro l'altra,
+  // abbastanza da avvicinarsi al limite di tempo di una richiesta e far
+  // arrivare un 502 generico invece del vero errore.
 
-  // Portafoglio: una gift card Shopify vera, a saldo zero. Ogni volta che un
-  // cliente compra col codice personale dell'Ambassador, il suo margine viene
-  // accreditato qui (vedi handleAmbassadorSyncSales) — lui la usa al checkout
-  // insieme al codice fornitura, e Shopify scala automaticamente solo la
-  // parte di saldo che serve, tenendo il resto per la volta dopo.
-  let walletId = null, walletCode = null;
-  try {
-    const giftGql = `mutation giftCardCreate($input: GiftCardCreateInput!) {
-      giftCardCreate(input: $input) {
-        giftCard { id }
-        giftCardCode
-        userErrors { field message }
-      }
-    }`;
-    const giftData = await shopifyAdminGraphQL(env, giftGql, {
-      input: {
-        initialValue: "0.00",
-        customerId: `gid://shopify/Customer/${customerId}`,
-        note: `Portafoglio Ambassador — ${nome_negozio}`,
-      },
-    });
-    const giftPayload = giftData?.data?.giftCardCreate;
-    if (giftPayload?.giftCard?.id && !(giftPayload.userErrors || []).length) {
-      walletId = giftPayload.giftCard.id;
-      walletCode = giftPayload.giftCardCode;
+  // 1. Invito Shopify: manda una mail al nuovo Ambassador per impostare la
+  // password e poter accedere come un cliente normale (senza questo,
+  // l'account esiste ma non ha password e non può fare login da nessuna parte).
+  const invitePromise = (async () => {
+    try {
+      const r = await shopifyAdminFetch(env, `customers/${customerId}/send_invite.json`, {
+        method: "POST",
+        body: JSON.stringify({ customer_invite: {} }),
+      });
+      return r.ok;
+    } catch (_) {
+      return false;
     }
-  } catch (_) {}
+  })();
 
-  // Codice "prezzo da negozio": sconto permanente e riutilizzabile dai clienti dell'Ambassador
-  let storePriceRuleId = null;
-  if (settings.pricing_mode === "percent" && settings.store_discount_pct > 0) {
-    const prRes = await shopifyAdminFetch(env, "price_rules.json", {
-      method: "POST",
-      body: JSON.stringify({
-        price_rule: {
-          title: code,
-          target_type: "line_item",
-          target_selection: "all",
-          allocation_method: "across",
-          value_type: "percentage",
-          value: String(-settings.store_discount_pct),
-          customer_selection: "all",
-          usage_limit: null,
-          starts_at: new Date().toISOString(),
+  // 2. Portafoglio: una gift card Shopify vera, a saldo zero. Ogni volta che
+  // un cliente compra col codice personale dell'Ambassador, il suo margine
+  // viene accreditato qui (vedi handleAmbassadorSyncSales) — lui la usa al
+  // checkout insieme al codice fornitura, e Shopify scala da solo solo la
+  // parte di saldo che serve, tenendo il resto per la volta dopo.
+  const walletPromise = (async () => {
+    try {
+      const giftGql = `mutation giftCardCreate($input: GiftCardCreateInput!) {
+        giftCardCreate(input: $input) {
+          giftCard { id }
+          giftCardCode
+          userErrors { field message }
+        }
+      }`;
+      const giftData = await shopifyAdminGraphQL(env, giftGql, {
+        input: {
+          initialValue: "0.00",
+          customerId: `gid://shopify/Customer/${customerId}`,
+          note: `Portafoglio Ambassador — ${nome_negozio}`,
         },
-      }),
-    });
-    const prData = await prRes.json().catch(() => ({}));
-    storePriceRuleId = prData.price_rule?.id;
-    if (storePriceRuleId) {
-      await shopifyAdminFetch(env, `price_rules/${storePriceRuleId}/discount_codes.json`, {
+      });
+      const giftPayload = giftData?.data?.giftCardCreate;
+      if (giftPayload?.giftCard?.id && !(giftPayload.userErrors || []).length) {
+        return { id: giftPayload.giftCard.id, code: giftPayload.giftCardCode };
+      }
+    } catch (_) {}
+    return { id: null, code: null };
+  })();
+
+  // 3. Codice "prezzo da negozio": sconto permanente e riutilizzabile dai clienti dell'Ambassador
+  const storeCodePromise = (async () => {
+    if (!(settings.pricing_mode === "percent" && settings.store_discount_pct > 0)) return null;
+    try {
+      const prRes = await shopifyAdminFetch(env, "price_rules.json", {
+        method: "POST",
+        body: JSON.stringify({
+          price_rule: {
+            title: code,
+            target_type: "line_item",
+            target_selection: "all",
+            allocation_method: "across",
+            value_type: "percentage",
+            value: String(-settings.store_discount_pct),
+            customer_selection: "all",
+            usage_limit: null,
+            starts_at: new Date().toISOString(),
+          },
+        }),
+      });
+      const prData = await prRes.json().catch(() => ({}));
+      const id = prData.price_rule?.id;
+      if (!id) return null;
+      await shopifyAdminFetch(env, `price_rules/${id}/discount_codes.json`, {
         method: "POST",
         body: JSON.stringify({ discount_code: { code } }),
       });
+      return id;
+    } catch (_) {
+      return null;
     }
-  }
+  })();
 
-  // Codice "listino fornitura" (Art. 2.1): sconto permanente con cui l'Ambassador STESSO
-  // si rifornisce — riservato al suo account, non ai suoi clienti (prerequisite_customer_ids).
-  const supplyCode = code + "-FORNITURA";
-  let supplyPriceRuleId = null;
-  if (settings.supply_discount_pct > 0) {
-    const supplyPrRes = await shopifyAdminFetch(env, "price_rules.json", {
-      method: "POST",
-      body: JSON.stringify({
-        price_rule: {
-          title: supplyCode,
-          target_type: "line_item",
-          target_selection: "all",
-          allocation_method: "across",
-          value_type: "percentage",
-          value: String(-settings.supply_discount_pct),
-          customer_selection: "prerequisite",
-          prerequisite_customer_ids: [customerId],
-          usage_limit: null,
-          starts_at: new Date().toISOString(),
-        },
-      }),
-    });
-    const supplyPrData = await supplyPrRes.json().catch(() => ({}));
-    supplyPriceRuleId = supplyPrData.price_rule?.id;
-    if (supplyPriceRuleId) {
-      await shopifyAdminFetch(env, `price_rules/${supplyPriceRuleId}/discount_codes.json`, {
+  // 4. Codice "listino fornitura" (Art. 2.1): sconto permanente con cui l'Ambassador
+  // STESSO si rifornisce — riservato al suo account, non ai suoi clienti.
+  const supplyCodePromise = (async () => {
+    if (!(settings.supply_discount_pct > 0)) return null;
+    try {
+      const prRes = await shopifyAdminFetch(env, "price_rules.json", {
+        method: "POST",
+        body: JSON.stringify({
+          price_rule: {
+            title: supplyCode,
+            target_type: "line_item",
+            target_selection: "all",
+            allocation_method: "across",
+            value_type: "percentage",
+            value: String(-settings.supply_discount_pct),
+            customer_selection: "prerequisite",
+            prerequisite_customer_ids: [customerId],
+            usage_limit: null,
+            starts_at: new Date().toISOString(),
+          },
+        }),
+      });
+      const prData = await prRes.json().catch(() => ({}));
+      const id = prData.price_rule?.id;
+      if (!id) return null;
+      await shopifyAdminFetch(env, `price_rules/${id}/discount_codes.json`, {
         method: "POST",
         body: JSON.stringify({ discount_code: { code: supplyCode } }),
       });
+      return id;
+    } catch (_) {
+      return null;
     }
-  }
+  })();
 
-  // Codice primo ordine (Art. 2.2): "ulteriore sconto del 60%, calcolato sul prezzo del
-  // listino riservato" — quindi il 60% si applica DOPO il -supply_discount_pct%, non sul
-  // prezzo pubblico. Sconto totale equivalente sul prezzo online: 1-(1-supply%)*(1-60%).
-  // Riservato anche questo al solo account dell'Ambassador.
-  const firstCode = code + "-PRIMO60";
-  const firstOrderTotalPct = 100 - (100 - settings.supply_discount_pct) * 0.4;
-  const firstPrRes = await shopifyAdminFetch(env, "price_rules.json", {
-    method: "POST",
-    body: JSON.stringify({
-      price_rule: {
-        title: firstCode,
-        target_type: "line_item",
-        target_selection: "all",
-        allocation_method: "across",
-        value_type: "percentage",
-        value: String(-Math.round(firstOrderTotalPct * 100) / 100),
-        customer_selection: "prerequisite",
-        prerequisite_customer_ids: [customerId],
-        once_per_customer: true,
-        usage_limit: 1,
-        starts_at: new Date().toISOString(),
-      },
-    }),
-  });
-  const firstPrData = await firstPrRes.json().catch(() => ({}));
-  const firstPriceRuleId = firstPrData.price_rule?.id;
-  if (firstPriceRuleId) {
-    await shopifyAdminFetch(env, `price_rules/${firstPriceRuleId}/discount_codes.json`, {
-      method: "POST",
-      body: JSON.stringify({ discount_code: { code: firstCode } }),
-    });
-  }
+  // 5. Codice primo ordine (Art. 2.2): "ulteriore sconto del 60%, calcolato sul prezzo
+  // del listino riservato" — il 60% si applica DOPO il -supply_discount_pct%, non sul
+  // prezzo pubblico. Sconto totale equivalente: 1-(1-supply%)*(1-60%). Riservato anche
+  // questo al solo account dell'Ambassador.
+  const firstOrderCodePromise = (async () => {
+    try {
+      const prRes = await shopifyAdminFetch(env, "price_rules.json", {
+        method: "POST",
+        body: JSON.stringify({
+          price_rule: {
+            title: firstCode,
+            target_type: "line_item",
+            target_selection: "all",
+            allocation_method: "across",
+            value_type: "percentage",
+            value: String(-Math.round(firstOrderTotalPct * 100) / 100),
+            customer_selection: "prerequisite",
+            prerequisite_customer_ids: [customerId],
+            once_per_customer: true,
+            usage_limit: 1,
+            starts_at: new Date().toISOString(),
+          },
+        }),
+      });
+      const prData = await prRes.json().catch(() => ({}));
+      const id = prData.price_rule?.id;
+      if (!id) return null;
+      await shopifyAdminFetch(env, `price_rules/${id}/discount_codes.json`, {
+        method: "POST",
+        body: JSON.stringify({ discount_code: { code: firstCode } }),
+      });
+      return id;
+    } catch (_) {
+      return null;
+    }
+  })();
+
+  const [inviteSent, wallet, storePriceRuleId, supplyPriceRuleId, firstPriceRuleId] = await Promise.all([
+    invitePromise,
+    walletPromise,
+    storeCodePromise,
+    supplyCodePromise,
+    firstOrderCodePromise,
+  ]);
+  const walletId = wallet.id,
+    walletCode = wallet.code;
 
   const profile = {
     code,
