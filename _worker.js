@@ -79,6 +79,7 @@ export default {
     if (pathname === "/api/ambassador/toggle") return handleAmbassadorToggle(request, env);
     if (pathname === "/api/ambassador/agreement") return handleAmbassadorAgreement(request, env);
     if (pathname === "/api/ambassador/next-coupon") return handleAmbassadorNextCoupon(request, env);
+    if (pathname === "/api/ambassador/sync-sales") return handleAmbassadorSyncSales(request, env);
     if (pathname === "/api/ambassador/me") return handleAmbassadorMe(request, env);
 
     if (pathname === "/api/dev/enter") return devEnter(request, env);
@@ -949,6 +950,25 @@ async function shopifyAdminFetch(env, path, opts = {}) {
   });
 }
 
+// Il portafoglio Ambassador usa le gift card Shopify, che si creano e si
+// accreditano solo via GraphQL Admin API: la REST API può creare una gift
+// card ma non ha nessun modo di aggiungere saldo a una già esistente.
+async function shopifyAdminGraphQL(env, query, variables) {
+  const res = await fetch(`${shopifyAdminBase()}/graphql.json`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Shopify-Access-Token": env.SHOPIFY_ADMIN_TOKEN,
+    },
+    body: JSON.stringify({ query, variables }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data.errors) {
+    throw new Error("GraphQL: " + JSON.stringify(data.errors || data).slice(0, 300));
+  }
+  return data;
+}
+
 function slug(s) {
   return String(s || "")
     .toLowerCase()
@@ -1054,6 +1074,46 @@ async function handleAmbassadorCreateInner(request, env) {
   }
   const customerId = custData.customer.id;
   const code = ambassadorCode(nome_negozio);
+
+  // Invito Shopify: manda una mail al nuovo Ambassador per impostare la password
+  // e poter accedere come un cliente normale (senza questo, l'account esiste ma
+  // non ha password e non può fare login né in /ambassador né ovunque altro).
+  let inviteSent = false;
+  try {
+    const inviteRes = await shopifyAdminFetch(env, `customers/${customerId}/send_invite.json`, {
+      method: "POST",
+      body: JSON.stringify({ customer_invite: {} }),
+    });
+    inviteSent = inviteRes.ok;
+  } catch (_) {}
+
+  // Portafoglio: una gift card Shopify vera, a saldo zero. Ogni volta che un
+  // cliente compra col codice personale dell'Ambassador, il suo margine viene
+  // accreditato qui (vedi handleAmbassadorSyncSales) — lui la usa al checkout
+  // insieme al codice fornitura, e Shopify scala automaticamente solo la
+  // parte di saldo che serve, tenendo il resto per la volta dopo.
+  let walletId = null, walletCode = null;
+  try {
+    const giftGql = `mutation giftCardCreate($input: GiftCardCreateInput!) {
+      giftCardCreate(input: $input) {
+        giftCard { id }
+        giftCardCode
+        userErrors { field message }
+      }
+    }`;
+    const giftData = await shopifyAdminGraphQL(env, giftGql, {
+      input: {
+        initialValue: "0.00",
+        customerId: `gid://shopify/Customer/${customerId}`,
+        note: `Portafoglio Ambassador — ${nome_negozio}`,
+      },
+    });
+    const giftPayload = giftData?.data?.giftCardCreate;
+    if (giftPayload?.giftCard?.id && !(giftPayload.userErrors || []).length) {
+      walletId = giftPayload.giftCard.id;
+      walletCode = giftPayload.giftCardCode;
+    }
+  } catch (_) {}
 
   // Codice "prezzo da negozio": sconto permanente e riutilizzabile dai clienti dell'Ambassador
   let storePriceRuleId = null;
@@ -1168,6 +1228,11 @@ async function handleAmbassadorCreateInner(request, env) {
     foro_competente: settings.foro_competente || "",
     created_at: new Date().toISOString(),
     next_coupons: [],
+    invite_sent: inviteSent,
+    wallet_id: walletId,
+    wallet_code: walletCode,
+    wallet_balance: 0,
+    ledger: [],
   };
   await shopifyAdminFetch(env, `customers/${customerId}/metafields.json`, {
     method: "POST",
@@ -1216,6 +1281,98 @@ async function handleAmbassadorToggleInner(request, env) {
     });
   }
   return jsonRes({ ok: true, suspended: !!suspend });
+}
+
+// Legge tutti gli ordini recenti, trova quelli fatti coi codici personali
+// degli Ambassador (Art. 2.3) e accredita nel loro portafoglio Shopify
+// (gift card) la differenza tra prezzo pieno e prezzo di fornitura di ogni
+// riga acquistata — cioè il suo margine reale su quella vendita. Va
+// richiamata di tanto in tanto (il pannello admin la lancia da sola
+// all'apertura della scheda Ambassador): non esiste un webhook automatico
+// a ogni ordine, quindi il saldo si aggiorna all'apertura del pannello, non
+// nello stesso istante dell'acquisto del cliente.
+async function handleAmbassadorSyncSales(request, env) {
+  const pwd = request.headers.get("X-Admin-Password") || "";
+  if (!env.ADMIN_PASSWORD || pwd !== env.ADMIN_PASSWORD) return jsonRes({ error: "Non autorizzato" }, 401);
+  try {
+    return await handleAmbassadorSyncSalesInner(env);
+  } catch (e) {
+    return jsonRes({ error: "Errore interno (sincronizzazione vendite): " + String(e && e.message ? e.message : e).slice(0, 300) }, 500);
+  }
+}
+
+async function handleAmbassadorSyncSalesInner(env) {
+  const listRes = await handleAmbassadorListInner(env);
+  const listData = await listRes.json();
+  const ambassadors = (listData.ambassadors || []).filter((a) => a.profile && a.profile.code);
+  if (!ambassadors.length) return jsonRes({ ok: true, updated: 0, orders_scanned: 0 });
+
+  const settings = await getAmbassadorSettings(env);
+  const ordersRes = await shopifyAdminFetch(env, "orders.json?status=any&limit=250&fields=id,name,discount_codes,line_items,created_at,cancelled_at");
+  const ordersData = await ordersRes.json().catch(() => ({}));
+  if (!ordersRes.ok) return jsonRes({ error: "Shopify (lettura ordini): " + JSON.stringify(ordersData).slice(0, 200) }, 502);
+  const orders = (ordersData.orders || []).filter((o) => !o.cancelled_at);
+
+  let updated = 0;
+  const errors = [];
+  for (const amb of ambassadors) {
+    const meta = await getAmbassadorProfileMeta(env, amb.id);
+    if (!meta) continue;
+    let profile = {};
+    try {
+      profile = JSON.parse(meta.value) || {};
+    } catch (_) {}
+    profile.ledger = profile.ledger || [];
+    profile.wallet_balance = profile.wallet_balance || 0;
+    const seenIds = new Set(profile.ledger.map((l) => String(l.order_id)));
+    const code = (profile.code || "").toLowerCase();
+    let orderMarginTotal = 0;
+    let changed = false;
+    for (const o of orders) {
+      if (seenIds.has(String(o.id))) continue;
+      const codes = (o.discount_codes || []).map((d) => (d.code || "").toLowerCase());
+      if (!codes.includes(code)) continue;
+      let orderMargin = 0;
+      const items = [];
+      for (const li of o.line_items || []) {
+        const retail = parseFloat(li.price || 0) * (li.quantity || 1);
+        const wholesale = retail * (1 - (settings.supply_discount_pct || 0) / 100);
+        const margin = Math.round((retail - wholesale) * 100) / 100;
+        orderMargin += margin;
+        items.push({ title: li.title, qty: li.quantity, margin });
+      }
+      orderMargin = Math.round(orderMargin * 100) / 100;
+      profile.ledger.push({ order_id: o.id, order_name: o.name, items, margin: orderMargin, date: o.created_at });
+      orderMarginTotal += orderMargin;
+      changed = true;
+      updated++;
+    }
+    if (!changed) continue;
+    profile.wallet_balance = Math.round((profile.wallet_balance + orderMarginTotal) * 100) / 100;
+    if (profile.wallet_id && orderMarginTotal > 0) {
+      try {
+        const creditGql = `mutation giftCardCredit($id: ID!, $creditInput: GiftCardCreditInput!) {
+          giftCardCredit(id: $id, creditInput: $creditInput) {
+            giftCardCreditTransaction { id }
+            userErrors { field message }
+          }
+        }`;
+        const creditData = await shopifyAdminGraphQL(env, creditGql, {
+          id: profile.wallet_id,
+          creditInput: { creditAmount: { amount: String(orderMarginTotal), currencyCode: "EUR" } },
+        });
+        const errs = creditData?.data?.giftCardCredit?.userErrors || [];
+        if (errs.length) errors.push(`${profile.code}: ` + errs.map((e) => e.message).join("; "));
+      } catch (e) {
+        errors.push(`${profile.code}: ` + String(e && e.message ? e.message : e).slice(0, 150));
+      }
+    }
+    await shopifyAdminFetch(env, `metafields/${meta.id}.json`, {
+      method: "PUT",
+      body: JSON.stringify({ metafield: { id: meta.id, value: JSON.stringify(profile), type: "json" } }),
+    });
+  }
+  return jsonRes({ ok: true, updated, orders_scanned: orders.length, errors });
 }
 
 async function handleAmbassadorNextCoupon(request, env) {
@@ -1325,7 +1482,7 @@ footer{margin-top:40px;font-size:0.7rem;color:#999;text-align:center}
 <h2>Art. 2 – Cosa offre Shock</h2>
 <p><b>1. Listino riservato.</b> Per tutta la durata dell'accordo l'Ambassador acquista da Shock secondo un listino a lui dedicato (-${esc(settings.supply_discount_pct)}% sul prezzo online), per rivendere i prodotti ai propri clienti. Codice per i riordini, riservato all'account dell'Ambassador: <b>${esc(profile.supply_code || "—")}</b>.</p>
 <p><b>2. Primo ordine di prova.</b> Sul primo ordine l'Ambassador ha un ulteriore sconto del 60%, calcolato sul prezzo del listino riservato (sconto totale equivalente: -${esc(profile.first_order_total_pct ?? "")}% sul prezzo online). Lo sconto vale per un solo ordine, ${firstOrderText}. Codice: <b>${esc(profile.first_order_code || "—")}</b>.</p>
-<p><b>3. Codice personale.</b> Shock assegna all'Ambassador un codice univoco: <b>${esc(profile.code)}</b>. I clienti dell'Ambassador che lo usano su shockmalegrooming.com ordinano al prezzo da negozio, più basso del prezzo al pubblico online. L'Ambassador può pubblicare il codice sui propri canali social. Per ogni ordine fatto con il suo codice ottiene un coupon del ${esc(settings.next_supply_pct)}% da usare sulla fornitura successiva.</p>
+<p><b>3. Codice personale.</b> Shock assegna all'Ambassador un codice univoco: <b>${esc(profile.code)}</b>. I clienti dell'Ambassador che lo usano su shockmalegrooming.com ordinano al prezzo da negozio, più basso del prezzo al pubblico online. L'Ambassador può pubblicare il codice sui propri canali social. Per ogni ordine fatto con il suo codice, la differenza tra il prezzo online e il prezzo di fornitura riservato viene accreditata automaticamente nel suo portafoglio personale (codice: <b>${esc(profile.wallet_code || "—")}</b>), da usare insieme al codice di riordino sulla fornitura successiva.</p>
 <p><b>4. Area riservata.</b> Accesso a una sezione personale del sito per richiedere nuove forniture.</p>
 <p><b>5. Visibilità sui contenuti.</b> Shock può ripubblicare i contenuti dell'Ambassador sulla pagina Instagram @shockmalegrooming, che alla data della firma conta più di 50.000 follower.</p>
 <h2>Art. 3 – Cosa chiede Shock</h2>
