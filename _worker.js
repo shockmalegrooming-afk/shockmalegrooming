@@ -976,8 +976,6 @@ async function handleDebugScopes(request, env) {
 // finito.
 async function handleOauthCallback(request, env) {
   const url = new URL(request.url);
-  const pwd = url.searchParams.get("pwd") || "";
-  if (!env.ADMIN_PASSWORD || pwd !== env.ADMIN_PASSWORD) return new Response("Non autorizzato", { status: 401 });
   const code = url.searchParams.get("code");
   const shop = url.searchParams.get("shop");
   const clientId = url.searchParams.get("cid");
