@@ -100,11 +100,11 @@ button:disabled{opacity:.6;cursor:default}
     card.innerHTML=
       '<span class="status '+statusClass+'">'+statusLabel+'</span>'+
       (p.status!=="active"?'<p class="err">Il tuo profilo è sospeso: il codice e il listino riservato non sono al momento utilizzabili. Contatta Shock.</p>':'')+
-      '<div class="code-box"><div class="code">'+esc(p.code||"—")+'</div><p>Il tuo codice personale — condividilo con i tuoi clienti</p></div>'+
+      '<div class="code-box"><div class="code">'+esc(p.code||"—")+'</div><p>Codice per i tuoi clienti'+(p.store_discount_pct?' — prezzo da negozio, -'+esc(p.store_discount_pct)+'%':'')+'</p></div>'+
+      (p.supply_code?'<div class="code-box"><div class="code">'+esc(p.supply_code)+'</div><p>Codice per i tuoi riordini (listino fornitura, -'+esc(p.supply_discount_pct)+'%) — uso personale, non condividerlo</p></div>':'')+
       '<div class="row"><span>Negozio</span><span>'+esc(p.nome_negozio)+'</span></div>'+
       '<div class="row"><span>Regione</span><span>'+esc(p.region)+'</span></div>'+
-      (p.store_discount_pct?'<div class="row"><span>Sconto "prezzo da negozio"</span><span>-'+esc(p.store_discount_pct)+'%</span></div>':'')+
-      (p.first_order_code?'<div class="row"><span>Codice primo ordine (-60%, una tantum)</span><span style="font-family:monospace">'+esc(p.first_order_code)+'</span></div>':'')+
+      (p.first_order_code?'<div class="row"><span>Codice primo ordine (una tantum'+(p.first_order_total_pct?", -"+esc(p.first_order_total_pct)+"%":"")+')</span><span style="font-family:monospace">'+esc(p.first_order_code)+'</span></div>':'')+
       '<p style="margin:20px 0 8px;font-size:.72rem;color:rgba(240,236,229,.45);text-transform:uppercase;letter-spacing:.06em">Coupon fornitura successiva</p>'+
       couponsHtml+
       '<button class="logout" id="lo-btn" style="margin-top:22px">Esci</button>';

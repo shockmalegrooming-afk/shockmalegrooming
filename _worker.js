@@ -882,7 +882,8 @@ async function handlePunti(request, env) {
 const KV_AMBASSADOR_SETTINGS = "config:ambassador";
 const AMBASSADOR_SETTINGS_DEFAULT = {
   pricing_mode: "percent", // "percent" | "fixed" — "fixed" richiede un listino prodotto per prodotto, non ancora implementato
-  store_discount_pct: 20, // sconto % per il "prezzo da negozio" (codice personale)
+  store_discount_pct: 20, // Art. 2.3: sconto "prezzo da negozio" per i CLIENTI dell'Ambassador (= Listino Negozio, -20% sul prezzo online)
+  supply_discount_pct: 50, // Art. 2.1: sconto sul "listino riservato" con cui l'AMBASSADOR STESSO si rifornisce (= Listino Fornitura, -50% sul prezzo online)
   next_supply_pct: 15, // [X%] dell'Art. 2.3: coupon sulla fornitura successiva
   first_order_mode: "amount", // "kit" | "amount"
   first_order_kit_desc: "",
@@ -920,6 +921,7 @@ async function handleAmbassadorSettings(request, env) {
     const cfg = {
       pricing_mode: body.pricing_mode === "fixed" ? "fixed" : "percent",
       store_discount_pct: Math.max(0, Math.min(90, parseFloat(body.store_discount_pct) || 0)),
+      supply_discount_pct: Math.max(0, Math.min(90, parseFloat(body.supply_discount_pct) || 0)),
       next_supply_pct: Math.max(0, Math.min(90, parseFloat(body.next_supply_pct) || 0)),
       first_order_mode: body.first_order_mode === "kit" ? "kit" : "amount",
       first_order_kit_desc: String(body.first_order_kit_desc || "").slice(0, 500),
@@ -1082,8 +1084,44 @@ async function handleAmbassadorCreateInner(request, env) {
     }
   }
 
-  // Codice primo ordine: -60% una tantum sul listino riservato (Art. 2.2)
+  // Codice "listino fornitura" (Art. 2.1): sconto permanente con cui l'Ambassador STESSO
+  // si rifornisce — riservato al suo account, non ai suoi clienti (prerequisite_customer_ids).
+  const supplyCode = code + "-FORNITURA";
+  let supplyPriceRuleId = null;
+  if (settings.supply_discount_pct > 0) {
+    const supplyPrRes = await shopifyAdminFetch(env, "price_rules.json", {
+      method: "POST",
+      body: JSON.stringify({
+        price_rule: {
+          title: supplyCode,
+          target_type: "line_item",
+          target_selection: "all",
+          allocation_method: "across",
+          value_type: "percentage",
+          value: String(-settings.supply_discount_pct),
+          customer_selection: "prerequisite",
+          prerequisite_customer_ids: [customerId],
+          usage_limit: null,
+          starts_at: new Date().toISOString(),
+        },
+      }),
+    });
+    const supplyPrData = await supplyPrRes.json().catch(() => ({}));
+    supplyPriceRuleId = supplyPrData.price_rule?.id;
+    if (supplyPriceRuleId) {
+      await shopifyAdminFetch(env, `price_rules/${supplyPriceRuleId}/discount_codes.json`, {
+        method: "POST",
+        body: JSON.stringify({ discount_code: { code: supplyCode } }),
+      });
+    }
+  }
+
+  // Codice primo ordine (Art. 2.2): "ulteriore sconto del 60%, calcolato sul prezzo del
+  // listino riservato" — quindi il 60% si applica DOPO il -supply_discount_pct%, non sul
+  // prezzo pubblico. Sconto totale equivalente sul prezzo online: 1-(1-supply%)*(1-60%).
+  // Riservato anche questo al solo account dell'Ambassador.
   const firstCode = code + "-PRIMO60";
+  const firstOrderTotalPct = 100 - (100 - settings.supply_discount_pct) * 0.4;
   const firstPrRes = await shopifyAdminFetch(env, "price_rules.json", {
     method: "POST",
     body: JSON.stringify({
@@ -1093,8 +1131,9 @@ async function handleAmbassadorCreateInner(request, env) {
         target_selection: "all",
         allocation_method: "across",
         value_type: "percentage",
-        value: "-60.0",
-        customer_selection: "all",
+        value: String(-Math.round(firstOrderTotalPct * 100) / 100),
+        customer_selection: "prerequisite",
+        prerequisite_customer_ids: [customerId],
         once_per_customer: true,
         usage_limit: 1,
         starts_at: new Date().toISOString(),
@@ -1120,8 +1159,12 @@ async function handleAmbassadorCreateInner(request, env) {
     status: "active",
     store_price_rule_id: storePriceRuleId,
     store_discount_pct: settings.store_discount_pct,
+    supply_price_rule_id: supplyPriceRuleId,
+    supply_code: supplyPriceRuleId ? supplyCode : null,
+    supply_discount_pct: settings.supply_discount_pct,
     first_order_price_rule_id: firstPriceRuleId || null,
     first_order_code: firstPriceRuleId ? firstCode : null,
+    first_order_total_pct: Math.round(firstOrderTotalPct * 100) / 100,
     foro_competente: settings.foro_competente || "",
     created_at: new Date().toISOString(),
     next_coupons: [],
@@ -1280,8 +1323,8 @@ footer{margin-top:40px;font-size:0.7rem;color:#999;text-align:center}
 <p>(di seguito "l'Ambassador")</p>
 <p>Shock seleziona un massimo di due barbieri per regione come Ambassador Shock. L'Ambassador riceve condizioni commerciali riservate e visibilità e, in cambio, produce contenuti social secondo l'Art. 3. Il numero limitato di posti non costituisce esclusiva territoriale, salvo diversa indicazione scritta.</p>
 <h2>Art. 2 – Cosa offre Shock</h2>
-<p><b>1. Listino riservato.</b> Per tutta la durata dell'accordo l'Ambassador acquista da Shock secondo un listino a lui dedicato, per rivendere i prodotti ai propri clienti.</p>
-<p><b>2. Primo ordine di prova.</b> Sul primo ordine l'Ambassador ha un ulteriore sconto del 60%, calcolato sul prezzo del listino riservato. Lo sconto vale per un solo ordine, ${firstOrderText}. Codice: <b>${esc(profile.first_order_code || "—")}</b>.</p>
+<p><b>1. Listino riservato.</b> Per tutta la durata dell'accordo l'Ambassador acquista da Shock secondo un listino a lui dedicato (-${esc(settings.supply_discount_pct)}% sul prezzo online), per rivendere i prodotti ai propri clienti. Codice per i riordini, riservato all'account dell'Ambassador: <b>${esc(profile.supply_code || "—")}</b>.</p>
+<p><b>2. Primo ordine di prova.</b> Sul primo ordine l'Ambassador ha un ulteriore sconto del 60%, calcolato sul prezzo del listino riservato (sconto totale equivalente: -${esc(profile.first_order_total_pct ?? "")}% sul prezzo online). Lo sconto vale per un solo ordine, ${firstOrderText}. Codice: <b>${esc(profile.first_order_code || "—")}</b>.</p>
 <p><b>3. Codice personale.</b> Shock assegna all'Ambassador un codice univoco: <b>${esc(profile.code)}</b>. I clienti dell'Ambassador che lo usano su shockmalegrooming.com ordinano al prezzo da negozio, più basso del prezzo al pubblico online. L'Ambassador può pubblicare il codice sui propri canali social. Per ogni ordine fatto con il suo codice ottiene un coupon del ${esc(settings.next_supply_pct)}% da usare sulla fornitura successiva.</p>
 <p><b>4. Area riservata.</b> Accesso a una sezione personale del sito per richiedere nuove forniture.</p>
 <p><b>5. Visibilità sui contenuti.</b> Shock può ripubblicare i contenuti dell'Ambassador sulla pagina Instagram @shockmalegrooming, che alla data della firma conta più di 50.000 follower.</p>
