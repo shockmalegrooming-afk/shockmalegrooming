@@ -74,6 +74,7 @@ export default {
     }
 
     if (pathname === "/api/debug-scopes") return handleDebugScopes(request, env);
+    if (pathname === "/api/oauth-callback") return handleOauthCallback(request, env);
     if (pathname === "/api/ambassador/settings") return handleAmbassadorSettings(request, env);
     if (pathname === "/api/ambassador/list") return handleAmbassadorList(request, env);
     if (pathname === "/api/ambassador/create") return handleAmbassadorCreate(request, env);
@@ -964,6 +965,39 @@ async function handleDebugScopes(request, env) {
     return jsonRes({ status: r.status, scopes: (d.access_scopes || []).map((s) => s.handle) });
   } catch (e) {
     return jsonRes({ error: String(e && e.message ? e.message : e) }, 400);
+  }
+}
+
+// Diagnostica temporanea: completa lo scambio OAuth "codice -> token" per
+// l'app Shopify che stiamo reinstallando, usando client_id/client_secret
+// passati nell'URL di reindirizzamento stesso (Shopify li conserva assieme
+// al vero "code" che aggiunge lui). Il token risultante va copiato a mano su
+// Cloudflare — non viene salvato da nessuna parte qui. Da rimuovere a lavoro
+// finito.
+async function handleOauthCallback(request, env) {
+  const url = new URL(request.url);
+  const pwd = url.searchParams.get("pwd") || "";
+  if (!env.ADMIN_PASSWORD || pwd !== env.ADMIN_PASSWORD) return new Response("Non autorizzato", { status: 401 });
+  const code = url.searchParams.get("code");
+  const shop = url.searchParams.get("shop");
+  const clientId = url.searchParams.get("cid");
+  const clientSecret = url.searchParams.get("cs");
+  if (!code || !shop || !clientId || !clientSecret) {
+    return new Response("Mancano parametri (code/shop/cid/cs). URL ricevuto: " + request.url, { status: 400 });
+  }
+  try {
+    const r = await fetch(`https://${shop}/admin/oauth/access_token.json`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ client_id: clientId, client_secret: clientSecret, code }),
+    });
+    const text = await r.text();
+    return new Response(`Status Shopify: ${r.status}\n\n${text}`, {
+      status: 200,
+      headers: { "Content-Type": "text/plain; charset=utf-8" },
+    });
+  } catch (e) {
+    return new Response("Errore: " + String(e && e.message ? e.message : e), { status: 500 });
   }
 }
 
