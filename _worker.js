@@ -978,10 +978,10 @@ async function handleOauthCallback(request, env) {
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
   const shop = url.searchParams.get("shop");
-  const clientId = url.searchParams.get("cid");
-  const clientSecret = url.searchParams.get("cs");
+  const state = url.searchParams.get("state") || "";
+  const [clientId, clientSecret] = state.split(":");
   if (!code || !shop || !clientId || !clientSecret) {
-    return new Response("Mancano parametri (code/shop/cid/cs). URL ricevuto: " + request.url, { status: 400 });
+    return new Response("Mancano parametri (code/shop/state). URL ricevuto: " + request.url, { status: 400 });
   }
   try {
     const r = await fetch(`https://${shop}/admin/oauth/access_token.json`, {
