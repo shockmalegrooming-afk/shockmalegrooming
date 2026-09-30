@@ -103,8 +103,8 @@ button:disabled{opacity:.6;cursor:default}
     });
   }
 
-  function discountUrl(code){
-    return STORE_URL+"/discount/"+encodeURIComponent(code)+"?redirect=/collections/all";
+  function shopUrl(){
+    return STORE_URL+"/prodotti";
   }
 
   function kitRowHtml(products){
@@ -131,9 +131,9 @@ button:disabled{opacity:.6;cursor:default}
     var kitBannerHtml=showKitBanner
       ? '<div class="kit-banner">'+
           '<h2>🎉 Il tuo pacchetto di benvenuto</h2>'+
-          '<p>Sul tuo primo ordine hai diritto a <b>-60%</b> sul pacchetto Ambassador: Curl Design, Beard Oil, Sea Salt Spray, Matt Paste, Shine Wax ed Extra Matt.</p>'+
+          '<p>Sul tuo primo ordine hai diritto a <b>-60%</b> sul pacchetto Ambassador: Curl Design, Beard Oil, Sea Salt Spray, Matt Paste, Shine Wax ed Extra Matt. Al checkout inserisci il codice <b style="font-family:monospace">'+esc(p.first_order_code)+'</b>.</p>'+
           '<div class="kit-row">'+kitRowHtml(products)+'</div>'+
-          '<a class="btn-link" href="'+discountUrl(p.first_order_code)+'" target="_blank" rel="noopener">Applica lo sconto e vai al negozio</a>'+
+          '<a class="btn-link" href="'+shopUrl()+'" target="_blank" rel="noopener">Vai al negozio</a>'+
         '</div>'
       : '';
 
@@ -163,7 +163,7 @@ button:disabled{opacity:.6;cursor:default}
       '<div class="two-col" style="margin-bottom:12px">'+
         '<div><div class="val">'+esc(p.supply_code)+'</div><div class="lbl">Codice riordini · -'+esc(p.supply_discount_pct)+'%</div></div>'+
       '</div>'+
-      '<a class="btn-link" href="'+discountUrl(p.supply_code)+'" target="_blank" rel="noopener">Vai al negozio con lo sconto applicato</a>'+
+      '<a class="btn-link" href="'+shopUrl()+'" target="_blank" rel="noopener">Vai al negozio</a>'+
       '</div>'
       ):'')+
 
