@@ -1165,7 +1165,7 @@ async function handleAmbassadorCreateInner(request, env) {
       }`;
       const giftData = await shopifyAdminGraphQL(env, giftGql, {
         input: {
-          initialValue: "0.00",
+          initialValue: "0.01",
           customerId: `gid://shopify/Customer/${customerId}`,
           note: `Portafoglio Ambassador — ${nome_negozio}`,
         },
@@ -1315,7 +1315,7 @@ async function handleAmbassadorCreateInner(request, env) {
     invite_sent: inviteSent,
     wallet_id: walletId,
     wallet_code: walletCode,
-    wallet_balance: 0,
+    wallet_balance: walletId ? 0.01 : 0,
     ledger: [],
   };
   await shopifyAdminFetch(env, `customers/${customerId}/metafields.json`, {
