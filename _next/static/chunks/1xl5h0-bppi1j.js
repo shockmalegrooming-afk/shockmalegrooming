@@ -51,7 +51,7 @@ list.map(am=>(0,i.jsx)("div",{style:CARDA,children:(0,i.jsxs)("div",{style:{disp
 (0,i.jsxs)("p",{style:{color:"#0077A8",fontWeight:700,fontSize:"0.85rem",marginTop:6,fontFamily:"monospace"},children:["🎟 Clienti: ",am.profile.code]}),
 am.profile.supply_code&&(0,i.jsx)("p",{style:{color:"#c9a84c",fontWeight:700,fontSize:"0.85rem",marginTop:2,fontFamily:"monospace"},children:"🚚 Riordini: "+am.profile.supply_code+" (-"+am.profile.supply_discount_pct+"%)"}),
 am.profile.wallet_code&&(0,i.jsxs)("p",{style:{color:"#4CAF50",fontWeight:700,fontSize:"0.85rem",marginTop:2,fontFamily:"monospace"},children:["👛 Portafoglio: "+am.profile.wallet_code+" — saldo €"+(am.profile.wallet_balance||0).toFixed(2)]}),
-!1===am.profile.invite_sent&&(0,i.jsx)("p",{style:{color:"#FFA000",fontSize:"0.7rem",marginTop:4},children:"⚠ invito email non confermato — verifica su Shopify che l'abbia ricevuto"}),
+!1===am.profile.invite_sent&&(0,i.jsx)("p",{style:{color:"#FFA000",fontSize:"0.7rem",marginTop:4},children:"⚠ invito email non confermato — verifica su Shopify che l'abbia ricevuto"}),"already_active"===am.profile.invite_sent&&(0,i.jsx)("p",{style:{color:"#4CAF50",fontSize:"0.7rem",marginTop:4},children:"✓ questo cliente aveva già un account attivo — nessun invito necessario, può accedere con la password che ha già"}),
 (am.profile.next_coupons||[]).length>0&&(0,i.jsxs)("p",{style:{color:"rgba(255,255,255,0.3)",fontSize:"0.7rem",marginTop:4},children:[am.profile.next_coupons.length," coupon fornitura successiva generati"]})
 ]}),
 (0,i.jsxs)("div",{style:{display:"flex",gap:6,flexWrap:"wrap"},children:[

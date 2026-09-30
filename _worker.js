@@ -1122,6 +1122,7 @@ async function handleAmbassadorCreateInner(request, env) {
   const existingByEmail = (emailSearchD.customers || [])[0];
 
   let customerId;
+  let customerState;
   if (existingByEmail) {
     const existingTags = (existingByEmail.tags || "").split(",").map((t) => t.trim()).filter(Boolean);
     if (existingTags.includes("ambassador")) {
@@ -1138,6 +1139,7 @@ async function handleAmbassadorCreateInner(request, env) {
       return jsonRes({ error: "Shopify (aggiornamento cliente esistente): " + msg.slice(0, 300) }, 400);
     }
     customerId = updData.customer.id;
+    customerState = updData.customer.state;
   } else {
     const custRes = await shopifyAdminFetch(env, "customers.json", {
       method: "POST",
@@ -1149,6 +1151,7 @@ async function handleAmbassadorCreateInner(request, env) {
       return jsonRes({ error: "Shopify (creazione cliente): " + msg.slice(0, 300) }, 400);
     }
     customerId = custData.customer.id;
+    customerState = custData.customer.state;
   }
   const code = ambassadorCode(nome_negozio);
   const supplyCode = code + "-FORNITURA";
@@ -1165,6 +1168,7 @@ async function handleAmbassadorCreateInner(request, env) {
   // password e poter accedere come un cliente normale (senza questo,
   // l'account esiste ma non ha password e non può fare login da nessuna parte).
   const invitePromise = (async () => {
+    if (customerState === "enabled") return "already_active";
     try {
       const r = await shopifyAdminFetch(env, `customers/${customerId}/send_invite.json`, {
         method: "POST",
