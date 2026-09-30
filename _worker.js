@@ -895,6 +895,18 @@ const AMBASSADOR_SETTINGS_DEFAULT = {
   foro_competente: "Terni",
 };
 
+// I 6 prodotti del "pacchetto Ambassador" (kit primo ordine, -60%). Il
+// codice sconto del primo ordine viene ristretto SOLO a questi prodotti,
+// cosi' non puo' essere usato su altro anche se qualcuno lo scopre.
+const AMBASSADOR_KIT_PRODUCT_TITLES = ["Curl Design", "Beard Oil", "Sea Salt Spray", "Matt Paste", "Shine Wax", "Extra Matt"];
+
+async function getAmbassadorKitProductIds(env) {
+  const r = await shopifyAdminFetch(env, "products.json?limit=250&fields=id,title");
+  const d = await r.json().catch(() => ({}));
+  const byTitle = new Map((d.products || []).map((p) => [p.title.trim().toLowerCase(), p.id]));
+  return AMBASSADOR_KIT_PRODUCT_TITLES.map((t) => byTitle.get(t.toLowerCase())).filter(Boolean);
+}
+
 async function getAmbassadorSettings(env) {
   const store = kv(env);
   let cfg = AMBASSADOR_SETTINGS_DEFAULT;
@@ -1283,23 +1295,28 @@ async function handleAmbassadorCreateInner(request, env) {
   // questo al solo account dell'Ambassador.
   const firstOrderCodePromise = (async () => {
     try {
+      const kitProductIds = await getAmbassadorKitProductIds(env);
+      const priceRule = {
+        title: firstCode,
+        target_type: "line_item",
+        allocation_method: "across",
+        value_type: "percentage",
+        value: String(-Math.round(firstOrderTotalPct * 100) / 100),
+        customer_selection: "prerequisite",
+        prerequisite_customer_ids: [customerId],
+        once_per_customer: true,
+        usage_limit: 1,
+        starts_at: new Date().toISOString(),
+      };
+      if (kitProductIds.length) {
+        priceRule.target_selection = "entitled";
+        priceRule.entitled_product_ids = kitProductIds;
+      } else {
+        priceRule.target_selection = "all";
+      }
       const prRes = await shopifyAdminFetch(env, "price_rules.json", {
         method: "POST",
-        body: JSON.stringify({
-          price_rule: {
-            title: firstCode,
-            target_type: "line_item",
-            target_selection: "all",
-            allocation_method: "across",
-            value_type: "percentage",
-            value: String(-Math.round(firstOrderTotalPct * 100) / 100),
-            customer_selection: "prerequisite",
-            prerequisite_customer_ids: [customerId],
-            once_per_customer: true,
-            usage_limit: 1,
-            starts_at: new Date().toISOString(),
-          },
-        }),
+        body: JSON.stringify({ price_rule: priceRule }),
       });
       const prData = await prRes.json().catch(() => ({}));
       const id = prData.price_rule?.id;

@@ -107,6 +107,37 @@ button:disabled{opacity:.6;cursor:default}
     return STORE_URL+"/prodotti";
   }
 
+  function fetchKitVariantIds(){
+    return sfetch('{products(first:50){edges{node{title variants(first:1){edges{node{id}}}}}}}').then(function(d){
+      var edges=(d.data&&d.data.products&&d.data.products.edges)||[];
+      var byTitle={};
+      edges.forEach(function(e){
+        var vid=e.node.variants&&e.node.variants.edges[0]&&e.node.variants.edges[0].node.id;
+        if(vid)byTitle[e.node.title]=vid;
+      });
+      return KIT_PRODUCTS.map(function(name){return byTitle[name];}).filter(Boolean);
+    });
+  }
+
+  function goToKitCheckout(code,btn){
+    var token=null; try{token=localStorage.getItem("shopify_token");}catch(e){}
+    var orig=btn.textContent; btn.disabled=true; btn.textContent="Preparo il checkout...";
+    fetchKitVariantIds().then(function(variantIds){
+      if(variantIds.length<KIT_PRODUCTS.length){throw new Error("prodotti del kit non trovati");}
+      var input={lines:variantIds.map(function(id){return {merchandiseId:id,quantity:1};}),discountCodes:[code]};
+      if(token)input.buyerIdentity={customerAccessToken:token};
+      return sfetch('mutation($input:CartInput!){cartCreate(input:$input){cart{checkoutUrl}userErrors{message}}}',{input:input});
+    }).then(function(d){
+      var res=d&&d.data&&d.data.cartCreate;
+      var url=res&&res.cart&&res.cart.checkoutUrl;
+      if(!url)throw new Error((res&&res.userErrors&&res.userErrors[0]&&res.userErrors[0].message)||"errore checkout");
+      window.location.href=url;
+    }).catch(function(){
+      btn.disabled=false; btn.textContent=orig;
+      alert("Non sono riuscito a preparare il checkout automatico. Vai al negozio e inserisci il codice "+code+" manualmente.");
+    });
+  }
+
   function kitRowHtml(products){
     var byTitle={};
     (products||[]).forEach(function(p){byTitle[p.title]=p;});
@@ -131,9 +162,9 @@ button:disabled{opacity:.6;cursor:default}
     var kitBannerHtml=showKitBanner
       ? '<div class="kit-banner">'+
           '<h2>🎉 Il tuo pacchetto di benvenuto</h2>'+
-          '<p>Sul tuo primo ordine hai diritto a <b>-60%</b> sul pacchetto Ambassador: Curl Design, Beard Oil, Sea Salt Spray, Matt Paste, Shine Wax ed Extra Matt. Al checkout inserisci il codice <b style="font-family:monospace">'+esc(p.first_order_code)+'</b>.</p>'+
+          '<p>Sul tuo primo ordine hai diritto a <b>-60%</b> sul pacchetto Ambassador: Curl Design, Beard Oil, Sea Salt Spray, Matt Paste, Shine Wax ed Extra Matt. Clicca qui sotto: ti portiamo dritto al checkout con questi prodotti nel carrello e lo sconto già inserito.</p>'+
           '<div class="kit-row">'+kitRowHtml(products)+'</div>'+
-          '<a class="btn-link" href="'+shopUrl()+'" target="_blank" rel="noopener">Vai al negozio</a>'+
+          '<button type="button" class="btn-link" id="kit-checkout-btn" style="border:none;cursor:pointer">Vai al checkout con lo sconto già applicato</button>'+
         '</div>'
       : '';
 
@@ -176,6 +207,8 @@ button:disabled{opacity:.6;cursor:default}
       try{localStorage.removeItem("shopify_token");}catch(e){}
       renderLogin();
     });
+    var kcb=document.getElementById("kit-checkout-btn");
+    if(kcb)kcb.addEventListener("click",function(){goToKitCheckout(p.first_order_code,kcb);});
   }
 
   function fetchKitProducts(){
