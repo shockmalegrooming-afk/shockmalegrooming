@@ -113,9 +113,9 @@ button:disabled{opacity:.6;cursor:default}
       var byTitle={};
       edges.forEach(function(e){
         var vid=e.node.variants&&e.node.variants.edges[0]&&e.node.variants.edges[0].node.id;
-        if(vid)byTitle[e.node.title]=vid;
+        if(vid)byTitle[e.node.title.trim().toLowerCase()]=vid;
       });
-      return KIT_PRODUCTS.map(function(name){return byTitle[name];}).filter(Boolean);
+      return KIT_PRODUCTS.map(function(name){return byTitle[name.toLowerCase()];}).filter(Boolean);
     });
   }
 
@@ -140,9 +140,9 @@ button:disabled{opacity:.6;cursor:default}
 
   function kitRowHtml(products){
     var byTitle={};
-    (products||[]).forEach(function(p){byTitle[p.title]=p;});
+    (products||[]).forEach(function(p){byTitle[(p.title||"").trim().toLowerCase()]=p;});
     return KIT_PRODUCTS.map(function(name,i){
-      var p=byTitle[name];
+      var p=byTitle[name.toLowerCase()];
       var img=p&&p.image?'<img src="'+esc(p.image)+'" alt="'+esc(name)+'">':'<img src="/logo.png" alt="'+esc(name)+'" style="opacity:.3">';
       return (i>0?'<span class="kit-plus">+</span>':'')+img;
     }).join("");
