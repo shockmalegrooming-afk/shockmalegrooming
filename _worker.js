@@ -3,7 +3,7 @@ const CORS = {
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, X-Admin-Password",
 };
-// force-redeploy: pick up new SHOPIFY_ADMIN_TOKEN
+// force-redeploy: pick up new SHOPIFY_ADMIN_TOKEN (v2)
 
 // Soglie del programma punti: [punti richiesti, sconto in euro].
 // La STESSA tabella e' anche scritta a mano nel pannello admin e nella
