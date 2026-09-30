@@ -119,18 +119,28 @@ button:disabled{opacity:.6;cursor:default}
     });
   }
 
+  function createCart(lines,code,token){
+    var input={lines:lines,discountCodes:[code]};
+    if(token)input.buyerIdentity={customerAccessToken:token};
+    return sfetch('mutation($input:CartInput!){cartCreate(input:$input){cart{checkoutUrl}userErrors{message field}}}',{input:input}).then(function(d){
+      var res=d&&d.data&&d.data.cartCreate;
+      var url=res&&res.cart&&res.cart.checkoutUrl;
+      if(url)return url;
+      var err=res&&res.userErrors&&res.userErrors[0];
+      var isTokenIssue=err&&err.field&&err.field.indexOf("buyerIdentity")!==-1;
+      if(token&&isTokenIssue)return createCart(lines,code,null);
+      throw new Error((err&&err.message)||"errore checkout");
+    });
+  }
+
   function goToKitCheckout(code,btn){
     var token=null; try{token=localStorage.getItem("shopify_token");}catch(e){}
     var orig=btn.textContent; btn.disabled=true; btn.textContent="Preparo il checkout...";
     fetchKitVariantIds().then(function(variantIds){
       if(variantIds.length<KIT_PRODUCTS.length){throw new Error("prodotti del kit non trovati");}
-      var input={lines:variantIds.map(function(id){return {merchandiseId:id,quantity:1};}),discountCodes:[code]};
-      if(token)input.buyerIdentity={customerAccessToken:token};
-      return sfetch('mutation($input:CartInput!){cartCreate(input:$input){cart{checkoutUrl}userErrors{message}}}',{input:input});
-    }).then(function(d){
-      var res=d&&d.data&&d.data.cartCreate;
-      var url=res&&res.cart&&res.cart.checkoutUrl;
-      if(!url)throw new Error((res&&res.userErrors&&res.userErrors[0]&&res.userErrors[0].message)||"errore checkout");
+      var lines=variantIds.map(function(id){return {merchandiseId:id,quantity:1};});
+      return createCart(lines,code,token);
+    }).then(function(url){
       window.location.href=url;
     }).catch(function(){
       btn.disabled=false; btn.textContent=orig;
