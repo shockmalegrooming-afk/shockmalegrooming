@@ -1112,17 +1112,44 @@ async function handleAmbassadorCreateInner(request, env) {
 
   const settings = await getAmbassadorSettings(env);
 
-  const tags = ["ambassador", `ambassador-regione-${regionSlug}`].join(", ");
-  const custRes = await shopifyAdminFetch(env, "customers.json", {
-    method: "POST",
-    body: JSON.stringify({ customer: { first_name, last_name, email, phone: phone || undefined, tags, verified_email: true } }),
-  });
-  const custData = await custRes.json().catch(() => ({}));
-  if (!custRes.ok || !custData.customer) {
-    const msg = custData.errors ? JSON.stringify(custData.errors) : "errore sconosciuto";
-    return jsonRes({ error: "Shopify (creazione cliente): " + msg.slice(0, 300) }, 400);
+  const tags = ["ambassador", `ambassador-regione-${regionSlug}`];
+
+  // Se esiste già un cliente con questa email (es. ha già comprato come
+  // cliente normale), lo trasformiamo in Ambassador invece di fallire con
+  // "email already taken".
+  const emailSearchR = await shopifyAdminFetch(env, `customers/search.json?query=${encodeURIComponent("email:" + email)}&limit=1`);
+  const emailSearchD = await emailSearchR.json().catch(() => ({}));
+  const existingByEmail = (emailSearchD.customers || [])[0];
+
+  let customerId;
+  if (existingByEmail) {
+    const existingTags = (existingByEmail.tags || "").split(",").map((t) => t.trim()).filter(Boolean);
+    if (existingTags.includes("ambassador")) {
+      return jsonRes({ error: "Questo cliente è già registrato come Ambassador" }, 400);
+    }
+    const mergedTags = Array.from(new Set([...existingTags, ...tags])).join(", ");
+    const updRes = await shopifyAdminFetch(env, `customers/${existingByEmail.id}.json`, {
+      method: "PUT",
+      body: JSON.stringify({ customer: { id: existingByEmail.id, tags: mergedTags } }),
+    });
+    const updData = await updRes.json().catch(() => ({}));
+    if (!updRes.ok || !updData.customer) {
+      const msg = updData.errors ? JSON.stringify(updData.errors) : "errore sconosciuto";
+      return jsonRes({ error: "Shopify (aggiornamento cliente esistente): " + msg.slice(0, 300) }, 400);
+    }
+    customerId = updData.customer.id;
+  } else {
+    const custRes = await shopifyAdminFetch(env, "customers.json", {
+      method: "POST",
+      body: JSON.stringify({ customer: { first_name, last_name, email, phone: phone || undefined, tags: tags.join(", "), verified_email: true } }),
+    });
+    const custData = await custRes.json().catch(() => ({}));
+    if (!custRes.ok || !custData.customer) {
+      const msg = custData.errors ? JSON.stringify(custData.errors) : "errore sconosciuto";
+      return jsonRes({ error: "Shopify (creazione cliente): " + msg.slice(0, 300) }, 400);
+    }
+    customerId = custData.customer.id;
   }
-  const customerId = custData.customer.id;
   const code = ambassadorCode(nome_negozio);
   const supplyCode = code + "-FORNITURA";
   const firstCode = code + "-PRIMO60";
