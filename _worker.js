@@ -1309,6 +1309,7 @@ async function handleAmbassadorCreateInner(request, env) {
     first_order_price_rule_id: firstPriceRuleId || null,
     first_order_code: firstPriceRuleId ? firstCode : null,
     first_order_total_pct: Math.round(firstOrderTotalPct * 100) / 100,
+    first_order_used: false,
     foro_competente: settings.foro_competente || "",
     created_at: new Date().toISOString(),
     next_coupons: [],
@@ -1430,6 +1431,14 @@ async function handleAmbassadorSyncSalesInner(env) {
       orderMarginTotal += orderMargin;
       changed = true;
       updated++;
+    }
+    if (profile.first_order_code && !profile.first_order_used) {
+      const focode = profile.first_order_code.toLowerCase();
+      const usedFirstOrder = orders.some((o) => (o.discount_codes || []).some((d) => (d.code || "").toLowerCase() === focode));
+      if (usedFirstOrder) {
+        profile.first_order_used = true;
+        changed = true;
+      }
     }
     if (!changed) continue;
     profile.wallet_balance = Math.round((profile.wallet_balance + orderMarginTotal) * 100) / 100;
