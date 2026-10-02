@@ -41,7 +41,11 @@ button:disabled{opacity:.6;cursor:default}
 .two-col .lbl{font-size:.66rem;color:rgba(240,236,229,.4);text-transform:uppercase;letter-spacing:.05em;margin-top:8px;line-height:1.4}
 .btn-link{display:block;text-align:center;background:#c9a84c;color:#0a0908;border-radius:100px;padding:12px;font-weight:700;font-size:.85rem;text-decoration:none}
 .btn-secondary{display:block;text-align:center;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);color:#f0ece5;border-radius:100px;padding:11px;font-weight:700;font-size:.8rem;text-decoration:none;margin-top:10px}
-.hint{font-size:.76rem;color:rgba(240,236,229,.45);line-height:1.5;margin:10px 0 14px}
+.hint{font-size:.85rem;color:rgba(240,236,229,.65);line-height:1.6;margin:10px 0 14px}
+.steps{list-style:none;margin:10px 0 16px;padding:0;counter-reset:step}
+.steps li{position:relative;padding:0 0 0 30px;margin-bottom:10px;font-size:.85rem;color:rgba(240,236,229,.75);line-height:1.5}
+.steps li::before{counter-increment:step;content:counter(step);position:absolute;left:0;top:0;width:20px;height:20px;border-radius:50%;background:rgba(201,168,76,.18);color:#c9a84c;font-size:.72rem;font-weight:700;display:flex;align-items:center;justify-content:center}
+.code-pill{display:inline-block;font-family:monospace;font-weight:700;background:rgba(201,168,76,.12);color:#c9a84c;padding:2px 8px;border-radius:6px;font-size:.88em}
 .reorder-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.06)}
 .reorder-row .ri-img img{width:44px;height:44px;object-fit:cover;border-radius:8px;background:#0f0d0c}
 .reorder-row .ri-info{flex:1;min-width:0}
@@ -200,7 +204,7 @@ button:disabled{opacity:.6;cursor:default}
       '</div>';
     }).join("");
     return '<div class="section"><h3>Ordina / Riordina</h3>'+
-      '<p class="hint">Prezzi già scontati del tuo listino fornitura (-'+esc(pct)+'%). Scegli le quantità: ti portiamo dritto al checkout con lo sconto già applicato, senza bisogno di copiare o passare codici a nessuno.'+(p.wallet_code?' Il saldo del tuo portafoglio (codice buono regalo <b style="font-family:monospace">'+esc(p.wallet_code)+'</b>) puoi inserirlo manualmente al checkout per scalarlo dal totale.':'')+'</p>'+
+      '<p class="hint">Prezzi già scontati del tuo listino fornitura (-'+esc(pct)+'%). Scegli le quantità: ti portiamo dritto al checkout con lo sconto già applicato'+(p.wallet_code?', poi inserisci lì anche il codice del portafoglio qui sopra per scalare il saldo':'')+'.</p>'+
       '<div id="reorder-list">'+rows+'</div>'+
       '<button type="button" class="btn-link" id="reorder-checkout-btn" style="border:none;cursor:pointer;margin-top:14px;opacity:.5" disabled>Aggiungi almeno un prodotto</button>'+
     '</div>';
@@ -239,7 +243,13 @@ button:disabled{opacity:.6;cursor:default}
         '<div><div class="val">'+esc(p.code||"—")+'</div><div class="lbl">Codice sconto clienti'+(p.store_discount_pct?" · -"+esc(p.store_discount_pct)+"%":"")+'</div></div>'+
         '<div><div class="val green">€'+Number(p.wallet_balance||0).toFixed(2)+'</div><div class="lbl">Saldo portafoglio</div></div>'+
       '</div>'+
-      '<p class="hint">Dai il codice sconto ai tuoi clienti: quando lo usano, la differenza tra prezzo online e prezzo fornitura si accumula automaticamente nel tuo portafoglio.</p>'+
+      (p.wallet_code?'<div class="two-col" style="margin-top:10px"><div style="flex:1"><div class="val" style="color:#4CAF50">'+esc(p.wallet_code)+'</div><div class="lbl">Codice del tuo portafoglio</div></div></div>':'')+
+      '<p style="margin:18px 0 8px;font-size:.78rem;color:rgba(240,236,229,.5);font-weight:700;text-transform:uppercase;letter-spacing:.05em">Come funziona</p>'+
+      '<ol class="steps">'+
+        '<li>Dai il codice <span class="code-pill">'+esc(p.code||"")+'</span> ai tuoi clienti: lo usano al checkout e pagano il prezzo negozio.</li>'+
+        '<li>La differenza tra prezzo online e prezzo fornitura si accumula da sola nel tuo portafoglio, qui sopra.</li>'+
+        '<li>Quando fai un riordino, usa il codice <span class="code-pill">'+esc(p.wallet_code||"")+'</span> al checkout: Shopify scala quell’importo dal totale da pagare.</li>'+
+      '</ol>'+
       '</div>'+
 
       '<div class="section"><h3>Listino riservato</h3>'+

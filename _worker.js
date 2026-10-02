@@ -1040,16 +1040,16 @@ function slug(s) {
     .replace(/^-+|-+$/g, "");
 }
 
-function ambassadorCode(shopName, discountPct) {
+function ambassadorCodeParts(shopName, discountPct) {
   const base = String(shopName || "")
     .toUpperCase()
     .normalize("NFD")
     .replace(/[̀-ͯ]/g, "")
     .replace(/[^A-Z0-9]/g, "")
-    .slice(0, 14);
+    .slice(0, 14) || "AMB";
   const rand = Math.floor(100 + Math.random() * 900); // 3 cifre casuali, non indovinabili a colpo sicuro
   const prefix = Number.isFinite(discountPct) && discountPct > 0 ? Math.round(discountPct) + "OFF-" : "SHOCK-";
-  return prefix + (base || "AMB") + rand;
+  return { base, rand, code: prefix + base + rand };
 }
 
 async function getAmbassadorProfileMeta(env, customerId) {
@@ -1168,7 +1168,8 @@ async function handleAmbassadorCreateInner(request, env) {
     customerId = custData.customer.id;
     customerState = custData.customer.state;
   }
-  const code = ambassadorCode(nome_negozio, settings.store_discount_pct);
+  const { base: codeBase, rand: codeRand, code } = ambassadorCodeParts(nome_negozio, settings.store_discount_pct);
+  const walletCodeWanted = codeBase + codeRand + "WALLET";
   const supplyCode = code + "-FORNITURA";
   const firstCode = code + "-PRIMO60";
   const firstOrderTotalPct = 100 - (100 - settings.supply_discount_pct) * 0.4;
@@ -1212,6 +1213,7 @@ async function handleAmbassadorCreateInner(request, env) {
       const giftData = await shopifyAdminGraphQL(env, giftGql, {
         input: {
           initialValue: "0.01",
+          code: walletCodeWanted,
           customerId: `gid://shopify/Customer/${customerId}`,
           note: `Portafoglio Ambassador — ${nome_negozio}`,
         },
