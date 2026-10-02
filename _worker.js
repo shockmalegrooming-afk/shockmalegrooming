@@ -1169,7 +1169,7 @@ async function handleAmbassadorCreateInner(request, env) {
     customerState = custData.customer.state;
   }
   const { base: codeBase, rand: codeRand, code } = ambassadorCodeParts(nome_negozio, settings.store_discount_pct);
-  const walletCodeWanted = codeBase + codeRand + "WALLET";
+  const walletCodeWanted = codeBase.slice(0, 11) + codeRand + "GC"; // gift card Shopify: max 20 caratteri
   const supplyCode = code + "-FORNITURA";
   const firstCode = code + "-PRIMO60";
   const firstOrderTotalPct = 100 - (100 - settings.supply_discount_pct) * 0.4;
