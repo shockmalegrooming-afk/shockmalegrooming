@@ -1040,13 +1040,16 @@ function slug(s) {
     .replace(/^-+|-+$/g, "");
 }
 
-function ambassadorCode(shopName) {
+function ambassadorCode(shopName, discountPct) {
   const base = String(shopName || "")
     .toUpperCase()
     .normalize("NFD")
     .replace(/[̀-ͯ]/g, "")
-    .replace(/[^A-Z0-9]/g, "");
-  return "SHOCK-" + (base || "AMB" + Math.random().toString(36).slice(2, 6).toUpperCase());
+    .replace(/[^A-Z0-9]/g, "")
+    .slice(0, 14);
+  const rand = Math.floor(100 + Math.random() * 900); // 3 cifre casuali, non indovinabili a colpo sicuro
+  const prefix = Number.isFinite(discountPct) && discountPct > 0 ? Math.round(discountPct) + "OFF-" : "SHOCK-";
+  return prefix + (base || "AMB") + rand;
 }
 
 async function getAmbassadorProfileMeta(env, customerId) {
@@ -1165,7 +1168,7 @@ async function handleAmbassadorCreateInner(request, env) {
     customerId = custData.customer.id;
     customerState = custData.customer.state;
   }
-  const code = ambassadorCode(nome_negozio);
+  const code = ambassadorCode(nome_negozio, settings.store_discount_pct);
   const supplyCode = code + "-FORNITURA";
   const firstCode = code + "-PRIMO60";
   const firstOrderTotalPct = 100 - (100 - settings.supply_discount_pct) * 0.4;

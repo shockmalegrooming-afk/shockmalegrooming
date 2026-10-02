@@ -42,6 +42,15 @@ button:disabled{opacity:.6;cursor:default}
 .btn-link{display:block;text-align:center;background:#c9a84c;color:#0a0908;border-radius:100px;padding:12px;font-weight:700;font-size:.85rem;text-decoration:none}
 .btn-secondary{display:block;text-align:center;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);color:#f0ece5;border-radius:100px;padding:11px;font-weight:700;font-size:.8rem;text-decoration:none;margin-top:10px}
 .hint{font-size:.76rem;color:rgba(240,236,229,.45);line-height:1.5;margin:10px 0 14px}
+.reorder-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.06)}
+.reorder-row .ri-img img{width:44px;height:44px;object-fit:cover;border-radius:8px;background:#0f0d0c}
+.reorder-row .ri-info{flex:1;min-width:0}
+.reorder-row .ri-title{font-size:.85rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.reorder-row .ri-price{font-size:.78rem;color:rgba(240,236,229,.5)}
+.reorder-row .ri-was{text-decoration:line-through;opacity:.5;margin-right:4px}
+.reorder-row .ri-qty{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.ri-btn{width:26px;height:26px;border-radius:50%;border:1px solid rgba(255,255,255,.2);background:transparent;color:#f0ece5;cursor:pointer;font-size:.9rem;line-height:1;display:flex;align-items:center;justify-content:center;padding:0}
+.ri-qty-val{min-width:16px;text-align:center;font-size:.85rem}
 .kit-banner{background:linear-gradient(135deg,rgba(201,168,76,.14),rgba(201,168,76,.04));border:1px solid rgba(201,168,76,.4);border-radius:16px;padding:22px;margin-bottom:26px}
 .kit-banner h2{margin:0 0 6px;font-size:1.05rem;color:#c9a84c}
 .kit-banner p{margin:0 0 16px;font-size:.85rem;color:rgba(240,236,229,.65);line-height:1.5}
@@ -107,6 +116,21 @@ button:disabled{opacity:.6;cursor:default}
     return STORE_URL+"/prodotti";
   }
 
+  function fetchCatalog(){
+    return sfetch('{products(first:50){edges{node{title featuredImage{url} variants(first:1){edges{node{id price{amount}}}}}}}}').then(function(d){
+      var edges=(d.data&&d.data.products&&d.data.products.edges)||[];
+      return edges.map(function(e){
+        var v=e.node.variants&&e.node.variants.edges[0]&&e.node.variants.edges[0].node;
+        return {
+          title:e.node.title,
+          image:e.node.featuredImage&&e.node.featuredImage.url,
+          variantId:v&&v.id,
+          price:v&&v.price?parseFloat(v.price.amount):0
+        };
+      }).filter(function(p){return p.variantId&&p.price>0;});
+    }).catch(function(){return [];});
+  }
+
   function fetchKitVariantIds(){
     return sfetch('{products(first:50){edges{node{title variants(first:1){edges{node{id}}}}}}}').then(function(d){
       var edges=(d.data&&d.data.products&&d.data.products.edges)||[];
@@ -158,7 +182,31 @@ button:disabled{opacity:.6;cursor:default}
     }).join("");
   }
 
-  function renderProfile(p,products){
+  function reorderSectionHtml(p,catalog){
+    if(!p.supply_code)return "";
+    var pct=p.supply_discount_pct||0;
+    var rows=(catalog||[]).map(function(item){
+      var fPrice=item.price*(1-pct/100);
+      var img=item.image?'<img src="'+esc(item.image)+'" alt="">':'';
+      return '<div class="reorder-row" data-vid="'+esc(item.variantId)+'">'+
+        '<div class="ri-img">'+img+'</div>'+
+        '<div class="ri-info"><div class="ri-title">'+esc(item.title)+'</div>'+
+          '<div class="ri-price"><span class="ri-was">€'+item.price.toFixed(2)+'</span>€'+fPrice.toFixed(2)+'</div></div>'+
+        '<div class="ri-qty">'+
+          '<button type="button" class="ri-btn" data-qty-dec aria-label="Diminuisci">−</button>'+
+          '<span class="ri-qty-val">0</span>'+
+          '<button type="button" class="ri-btn" data-qty-inc aria-label="Aumenta">+</button>'+
+        '</div>'+
+      '</div>';
+    }).join("");
+    return '<div class="section"><h3>Ordina / Riordina</h3>'+
+      '<p class="hint">Prezzi già scontati del tuo listino fornitura (-'+esc(pct)+'%). Scegli le quantità: ti portiamo dritto al checkout con lo sconto già applicato, senza bisogno di copiare o passare codici a nessuno.'+(p.wallet_code?' Il saldo del tuo portafoglio (codice buono regalo <b style="font-family:monospace">'+esc(p.wallet_code)+'</b>) puoi inserirlo manualmente al checkout per scalarlo dal totale.':'')+'</p>'+
+      '<div id="reorder-list">'+rows+'</div>'+
+      '<button type="button" class="btn-link" id="reorder-checkout-btn" style="border:none;cursor:pointer;margin-top:14px;opacity:.5" disabled>Aggiungi almeno un prodotto</button>'+
+    '</div>';
+  }
+
+  function renderProfile(p,products,catalog){
     var statusClass=p.status==="active"?"active":"suspended";
     var statusLabel=p.status==="active"?"Attivo":"Sospeso";
     var ledger=(p.ledger||[]).slice().reverse();
@@ -199,14 +247,14 @@ button:disabled{opacity:.6;cursor:default}
       '</div>'+
 
       (p.supply_code?(
-      '<div class="section"><h3>Ordina / Riordina</h3>'+
-      '<p class="hint">Per rifornirti ai prezzi riservati, vai al negozio e al checkout inserisci il codice sconto qui sotto'+(p.wallet_code?' insieme al tuo portafoglio (codice buono regalo <b style="font-family:monospace">'+esc(p.wallet_code)+'</b>) per scalare il saldo dal totale':'')+'.</p>'+
-      '<div class="two-col" style="margin-bottom:12px">'+
+      '<div class="section"><h3>Il tuo codice riordini</h3>'+
+      '<div class="two-col" style="margin-bottom:4px">'+
         '<div><div class="val">'+esc(p.supply_code)+'</div><div class="lbl">Codice riordini · -'+esc(p.supply_discount_pct)+'%</div></div>'+
       '</div>'+
-      '<a class="btn-link" href="'+shopUrl()+'" target="_blank" rel="noopener">Vai al negozio</a>'+
       '</div>'
       ):'')+
+
+      reorderSectionHtml(p,catalog)+
 
       '<div class="section"><h3>Cronologia ordini</h3>'+
       ledgerHtml+
@@ -219,6 +267,52 @@ button:disabled{opacity:.6;cursor:default}
     });
     var kcb=document.getElementById("kit-checkout-btn");
     if(kcb)kcb.addEventListener("click",function(){goToKitCheckout(p.first_order_code,kcb);});
+
+    var reorderQty={};
+    var reorderList=document.getElementById("reorder-list");
+    var reorderBtn=document.getElementById("reorder-checkout-btn");
+    function updateReorderBtn(){
+      if(!reorderBtn)return;
+      var n=0;
+      Object.keys(reorderQty).forEach(function(vid){n+=reorderQty[vid]||0;});
+      if(n>0){
+        reorderBtn.disabled=false;reorderBtn.style.opacity="1";
+        reorderBtn.textContent="Vai al checkout ("+n+(n===1?" articolo":" articoli")+")";
+      }else{
+        reorderBtn.disabled=true;reorderBtn.style.opacity=".5";
+        reorderBtn.textContent="Aggiungi almeno un prodotto";
+      }
+    }
+    if(reorderList){
+      reorderList.addEventListener("click",function(e){
+        var row=e.target.closest(".reorder-row");
+        if(!row)return;
+        var vid=row.getAttribute("data-vid");
+        if(e.target.closest("[data-qty-inc]")){
+          reorderQty[vid]=(reorderQty[vid]||0)+1;
+        }else if(e.target.closest("[data-qty-dec]")){
+          reorderQty[vid]=Math.max(0,(reorderQty[vid]||0)-1);
+        }else return;
+        var span=row.querySelector(".ri-qty-val");
+        if(span)span.textContent=reorderQty[vid];
+        updateReorderBtn();
+      });
+    }
+    if(reorderBtn){
+      reorderBtn.addEventListener("click",function(){
+        var lines=Object.keys(reorderQty).filter(function(vid){return reorderQty[vid]>0;}).map(function(vid){return {merchandiseId:vid,quantity:reorderQty[vid]};});
+        if(!lines.length)return;
+        var token=null; try{token=localStorage.getItem("shopify_token");}catch(e){}
+        var orig=reorderBtn.textContent;
+        reorderBtn.disabled=true; reorderBtn.textContent="Preparo il checkout...";
+        createCart(lines,p.supply_code,token).then(function(url){
+          window.location.href=url;
+        }).catch(function(){
+          reorderBtn.disabled=false; reorderBtn.textContent=orig;
+          alert("Non sono riuscito a preparare il checkout automatico. Vai al negozio e inserisci il codice "+p.supply_code+" manualmente.");
+        });
+      });
+    }
   }
 
   function fetchKitProducts(){
@@ -228,9 +322,10 @@ button:disabled{opacity:.6;cursor:default}
   function loadProfile(token){
     Promise.all([
       fetch("/api/ambassador/me?token="+encodeURIComponent(token)).then(function(r){return r.json().then(function(d){return {ok:r.ok,body:d};});}),
-      fetchKitProducts()
+      fetchKitProducts(),
+      fetchCatalog()
     ]).then(function(results){
-      var res=results[0], products=results[1];
+      var res=results[0], products=results[1], catalog=results[2];
       if(!res.ok){
         if(res.body&&res.body.error==="Token non valido"){
           try{localStorage.removeItem("shopify_token");}catch(e){}
@@ -242,7 +337,7 @@ button:disabled{opacity:.6;cursor:default}
         }
         return;
       }
-      renderProfile(res.body.profile,products);
+      renderProfile(res.body.profile,products,catalog);
     }).catch(function(){
       card.innerHTML='<p class="err">Errore di connessione, riprova più tardi.</p>';
     });

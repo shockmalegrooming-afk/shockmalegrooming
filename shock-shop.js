@@ -280,7 +280,14 @@
     updateLine: updateLine, removeLine: removeLine, onChange: onChange, flash: flash, init: init,
     ACCENT: ACCENT,
     addAndOpen: function (variantId, qty) {
-      return add(variantId, qty).then(function () { open(); }).catch(function (err) { flash("Errore: " + (err.message || "riprova")); });
+      return add(variantId, qty).then(function () {
+        var alreadyOpened = false;
+        try { alreadyOpened = sessionStorage.getItem("shock_cart_auto_opened") === "1"; } catch (e) {}
+        if (!alreadyOpened) {
+          try { sessionStorage.setItem("shock_cart_auto_opened", "1"); } catch (e) {}
+          open();
+        }
+      }).catch(function (err) { flash("Errore: " + (err.message || "riprova")); });
     },
   };
 
