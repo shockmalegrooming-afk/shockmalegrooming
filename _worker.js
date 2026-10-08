@@ -1407,8 +1407,8 @@ async function handleAmbassadorToggleInner(request, env) {
   });
 
   const meta = await getAmbassadorProfileMeta(env, customer_id);
+  let profile = {};
   if (meta) {
-    let profile = {};
     try {
       profile = JSON.parse(meta.value) || {};
     } catch (_) {}
@@ -1418,6 +1418,22 @@ async function handleAmbassadorToggleInner(request, env) {
       body: JSON.stringify({ metafield: { id: meta.id, value: JSON.stringify(profile), type: "json" } }),
     });
   }
+
+  // Sospendere deve bloccare DAVVERO i codici sconto (altrimenti un
+  // Ambassador sospeso potrebbe ancora farli usare ai suoi clienti o a se
+  // stesso) — li disattiviamo/riattiviamo su Shopify, non solo nel profilo.
+  // Il portafoglio (gift card) non si tocca: e' denaro gia' maturato, e
+  // Shopify non offre modo di disabilitarlo in modo reversibile.
+  const priceRuleIds = [profile.store_price_rule_id, profile.supply_price_rule_id, profile.first_order_price_rule_id].filter(Boolean);
+  const mutationName = suspend ? "discountCodeDeactivate" : "discountCodeActivate";
+  await Promise.all(
+    priceRuleIds.map((id) =>
+      shopifyAdminGraphQL(env, `mutation($id: ID!) { ${mutationName}(id: $id) { userErrors { message } } }`, {
+        id: `gid://shopify/DiscountCodeNode/${id}`,
+      }).catch(() => null)
+    )
+  );
+
   return jsonRes({ ok: true, suspended: !!suspend });
 }
 
