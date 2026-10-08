@@ -1482,6 +1482,7 @@ async function handleAmbassadorSyncSalesInner(env) {
     const code = (profile.code || "").toLowerCase();
     let orderMarginTotal = 0;
     let changed = false;
+    const pendingLedgerEntries = [];
     for (const o of orders) {
       if (seenIds.has(String(o.id))) continue;
       const codes = (o.discount_codes || []).map((d) => (d.code || "").toLowerCase());
@@ -1496,10 +1497,8 @@ async function handleAmbassadorSyncSalesInner(env) {
         items.push({ title: li.title, qty: li.quantity, margin });
       }
       orderMargin = Math.round(orderMargin * 100) / 100;
-      profile.ledger.push({ order_id: o.id, order_name: o.name, items, margin: orderMargin, date: o.created_at });
+      pendingLedgerEntries.push({ order_id: o.id, order_name: o.name, items, margin: orderMargin, date: o.created_at });
       orderMarginTotal += orderMargin;
-      changed = true;
-      updated++;
     }
     if (profile.first_order_code && !profile.first_order_used) {
       const focode = profile.first_order_code.toLowerCase();
@@ -1509,26 +1508,43 @@ async function handleAmbassadorSyncSalesInner(env) {
         changed = true;
       }
     }
-    if (!changed) continue;
-    profile.wallet_balance = Math.round((profile.wallet_balance + orderMarginTotal) * 100) / 100;
-    if (profile.wallet_id && orderMarginTotal > 0) {
-      try {
-        const creditGql = `mutation giftCardCredit($id: ID!, $creditInput: GiftCardCreditInput!) {
-          giftCardCredit(id: $id, creditInput: $creditInput) {
-            giftCardCreditTransaction { id }
-            userErrors { field message }
+    if (pendingLedgerEntries.length) {
+      // Accreditiamo PRIMA la gift card vera su Shopify: solo se riesce
+      // registriamo le vendite nel ledger e alziamo il saldo locale.
+      // Altrimenti il saldo mostrato all'Ambassador non corrisponderebbe
+      // a quanto può davvero spendere al checkout — meglio riprovare al
+      // prossimo giro che segnare un saldo "finto".
+      let creditOk = !(profile.wallet_id && orderMarginTotal > 0);
+      if (profile.wallet_id && orderMarginTotal > 0) {
+        try {
+          const creditGql = `mutation giftCardCredit($id: ID!, $creditInput: GiftCardCreditInput!) {
+            giftCardCredit(id: $id, creditInput: $creditInput) {
+              giftCardCreditTransaction { id }
+              userErrors { field message }
+            }
+          }`;
+          const creditData = await shopifyAdminGraphQL(env, creditGql, {
+            id: profile.wallet_id,
+            creditInput: { creditAmount: { amount: String(orderMarginTotal), currencyCode: "EUR" } },
+          });
+          const errs = creditData?.data?.giftCardCredit?.userErrors || [];
+          if (errs.length) {
+            errors.push(`${profile.code}: ` + errs.map((e) => e.message).join("; "));
+          } else {
+            creditOk = true;
           }
-        }`;
-        const creditData = await shopifyAdminGraphQL(env, creditGql, {
-          id: profile.wallet_id,
-          creditInput: { creditAmount: { amount: String(orderMarginTotal), currencyCode: "EUR" } },
-        });
-        const errs = creditData?.data?.giftCardCredit?.userErrors || [];
-        if (errs.length) errors.push(`${profile.code}: ` + errs.map((e) => e.message).join("; "));
-      } catch (e) {
-        errors.push(`${profile.code}: ` + String(e && e.message ? e.message : e).slice(0, 150));
+        } catch (e) {
+          errors.push(`${profile.code}: ` + String(e && e.message ? e.message : e).slice(0, 150));
+        }
+      }
+      if (creditOk) {
+        profile.ledger.push(...pendingLedgerEntries);
+        profile.wallet_balance = Math.round((profile.wallet_balance + orderMarginTotal) * 100) / 100;
+        updated += pendingLedgerEntries.length;
+        changed = true;
       }
     }
+    if (!changed) continue;
     await shopifyAdminFetch(env, `metafields/${meta.id}.json`, {
       method: "PUT",
       body: JSON.stringify({ metafield: { id: meta.id, value: JSON.stringify(profile), type: "json" } }),
