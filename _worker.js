@@ -85,6 +85,13 @@ export default {
     if (pathname === "/api/ambassador/sync-sales") return handleAmbassadorSyncSales(request, env);
     if (pathname === "/api/ambassador/me") return handleAmbassadorMe(request, env);
 
+    if (pathname === "/api/scouting/regions") return handleScoutingRegions(request, env);
+    if (pathname === "/api/scouting/list") return handleScoutingList(request, env);
+    if (pathname === "/api/scouting/add") return handleScoutingAdd(request, env);
+    if (pathname === "/api/scouting/update") return handleScoutingUpdate(request, env);
+    if (pathname === "/api/scouting/remove") return handleScoutingRemove(request, env);
+    if (pathname === "/api/scouting/request-search") return handleScoutingRequestSearch(request, env);
+
     if (pathname === "/api/dev/enter") return devEnter(request, env);
     if (pathname === "/api/dev/exit") return devExit(request, env);
     if (pathname === "/api/dev/state") return devState(request, env);
@@ -1765,6 +1772,180 @@ async function handleAmbassadorMeInner(env, token) {
     return jsonRes({ error: "Il tuo profilo Ambassador è al momento sospeso. Contatta Shock per riattivarlo." }, 403);
   }
   return jsonRes({ profile });
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   SCOUTING AMBASSADOR
+   Pannello per trovare barbieri candidati a diventare Ambassador.
+   La ricerca vera e propria (social, recensioni, sito web) la fa
+   Claude manualmente via web quando l'admin preme "Aggiorna" (il
+   bottone mette la regione in coda, non fa scraping automatico in
+   tempo reale — scrapare Instagram in automatico violerebbe i suoi
+   Termini di Servizio). Questo blocco gestisce solo lo storage: elenco
+   candidati, stato "contattato", regioni attive e richieste in coda.
+   ═══════════════════════════════════════════════════════════════════ */
+
+const KV_SCOUTING_REGIONS = "scouting:regions";
+const KV_SCOUTING_CANDIDATES = "scouting:candidates";
+const SCOUTING_REGIONS_DEFAULT = ["Lombardia", "Campania", "Sicilia", "Veneto", "Toscana"];
+
+async function getScoutingRegions(env) {
+  const store = kv(env);
+  if (!store) return { regions: SCOUTING_REGIONS_DEFAULT, pending: [] };
+  const v = await store.get(KV_SCOUTING_REGIONS);
+  if (!v) return { regions: SCOUTING_REGIONS_DEFAULT, pending: [] };
+  try {
+    const parsed = JSON.parse(v);
+    return { regions: parsed.regions || SCOUTING_REGIONS_DEFAULT, pending: parsed.pending || [] };
+  } catch (_) {
+    return { regions: SCOUTING_REGIONS_DEFAULT, pending: [] };
+  }
+}
+
+async function handleScoutingRegions(request, env) {
+  if (request.method === "GET") {
+    return jsonRes(await getScoutingRegions(env));
+  }
+  if (request.method === "POST") {
+    const pwd = request.headers.get("X-Admin-Password") || "";
+    if (!env.ADMIN_PASSWORD || pwd !== env.ADMIN_PASSWORD) return jsonRes({ error: "Non autorizzato" }, 401);
+    const store = kv(env);
+    if (!store) return jsonRes({ error: "Memoria KV non collegata" }, 501);
+    let body = {};
+    try {
+      body = await request.json();
+    } catch (_) {}
+    const current = await getScoutingRegions(env);
+    const regions = Array.isArray(body.regions) ? body.regions.map((r) => String(r).trim()).filter(Boolean) : current.regions;
+    const cfg = { regions, pending: current.pending };
+    await store.put(KV_SCOUTING_REGIONS, JSON.stringify(cfg));
+    return jsonRes({ ok: true, ...cfg });
+  }
+  return jsonRes({ error: "Metodo non consentito" }, 405);
+}
+
+async function handleScoutingRequestSearch(request, env) {
+  const pwd = request.headers.get("X-Admin-Password") || "";
+  if (!env.ADMIN_PASSWORD || pwd !== env.ADMIN_PASSWORD) return jsonRes({ error: "Non autorizzato" }, 401);
+  const store = kv(env);
+  if (!store) return jsonRes({ error: "Memoria KV non collegata" }, 501);
+  let body = {};
+  try {
+    body = await request.json();
+  } catch (_) {}
+  const region = String(body.region || "").trim();
+  if (!region) return jsonRes({ error: "Regione mancante" }, 400);
+  const current = await getScoutingRegions(env);
+  const pending = (current.pending || []).filter((p) => p.region !== region);
+  pending.push({ region, requested_at: new Date().toISOString() });
+  const cfg = { regions: current.regions, pending };
+  await store.put(KV_SCOUTING_REGIONS, JSON.stringify(cfg));
+  return jsonRes({ ok: true, ...cfg });
+}
+
+async function getScoutingCandidates(env) {
+  const store = kv(env);
+  if (!store) return [];
+  const v = await store.get(KV_SCOUTING_CANDIDATES);
+  if (!v) return [];
+  try {
+    return JSON.parse(v) || [];
+  } catch (_) {
+    return [];
+  }
+}
+
+async function handleScoutingList(request, env) {
+  const pwd = request.headers.get("X-Admin-Password") || "";
+  if (!env.ADMIN_PASSWORD || pwd !== env.ADMIN_PASSWORD) return jsonRes({ error: "Non autorizzato" }, 401);
+  return jsonRes({ candidates: await getScoutingCandidates(env) });
+}
+
+// Usata da Claude (non dal browser) per salvare i candidati trovati
+// durante una ricerca manuale. Accetta uno o piu' candidati insieme.
+async function handleScoutingAdd(request, env) {
+  const pwd = request.headers.get("X-Admin-Password") || "";
+  if (!env.ADMIN_PASSWORD || pwd !== env.ADMIN_PASSWORD) return jsonRes({ error: "Non autorizzato" }, 401);
+  const store = kv(env);
+  if (!store) return jsonRes({ error: "Memoria KV non collegata" }, 501);
+  let body = {};
+  try {
+    body = await request.json();
+  } catch (_) {}
+  const incoming = Array.isArray(body.candidates) ? body.candidates : [body];
+  const existing = await getScoutingCandidates(env);
+  const existingKeys = new Set(existing.map((c) => (c.instagram_handle || c.name || "").toLowerCase()));
+  const added = [];
+  for (const c of incoming) {
+    const key = (c.instagram_handle || c.name || "").toLowerCase();
+    if (!key || existingKeys.has(key)) continue;
+    const candidate = {
+      id: crypto.randomUUID(),
+      region: c.region || "",
+      name: c.name || "",
+      address: c.address || "",
+      zone_note: c.zone_note || "",
+      instagram_handle: c.instagram_handle || "",
+      instagram_followers: c.instagram_followers || "",
+      instagram_activity: c.instagram_activity || "",
+      has_website: !!c.has_website,
+      website_url: c.website_url || "",
+      website_note: c.website_note || "",
+      reviews_rating: c.reviews_rating || "",
+      reviews_count: c.reviews_count || "",
+      summary: c.summary || "",
+      draft_message: c.draft_message || "",
+      contacted: false,
+      created_at: new Date().toISOString(),
+    };
+    existing.push(candidate);
+    existingKeys.add(key);
+    added.push(candidate);
+  }
+  await store.put(KV_SCOUTING_CANDIDATES, JSON.stringify(existing));
+  // La ricerca per questa regione e' stata evasa: la togliamo dalla coda.
+  if (added.length) {
+    const cfg = await getScoutingRegions(env);
+    const region = added[0].region;
+    const pending = (cfg.pending || []).filter((p) => p.region !== region);
+    await store.put(KV_SCOUTING_REGIONS, JSON.stringify({ regions: cfg.regions, pending }));
+  }
+  return jsonRes({ ok: true, added: added.length, skipped: incoming.length - added.length });
+}
+
+async function handleScoutingUpdate(request, env) {
+  const pwd = request.headers.get("X-Admin-Password") || "";
+  if (!env.ADMIN_PASSWORD || pwd !== env.ADMIN_PASSWORD) return jsonRes({ error: "Non autorizzato" }, 401);
+  const store = kv(env);
+  if (!store) return jsonRes({ error: "Memoria KV non collegata" }, 501);
+  let body = {};
+  try {
+    body = await request.json();
+  } catch (_) {}
+  const { id, contacted } = body;
+  if (!id) return jsonRes({ error: "id mancante" }, 400);
+  const candidates = await getScoutingCandidates(env);
+  const c = candidates.find((x) => x.id === id);
+  if (!c) return jsonRes({ error: "Candidato non trovato" }, 404);
+  if (typeof contacted === "boolean") c.contacted = contacted;
+  await store.put(KV_SCOUTING_CANDIDATES, JSON.stringify(candidates));
+  return jsonRes({ ok: true, candidate: c });
+}
+
+async function handleScoutingRemove(request, env) {
+  const pwd = request.headers.get("X-Admin-Password") || "";
+  if (!env.ADMIN_PASSWORD || pwd !== env.ADMIN_PASSWORD) return jsonRes({ error: "Non autorizzato" }, 401);
+  const store = kv(env);
+  if (!store) return jsonRes({ error: "Memoria KV non collegata" }, 501);
+  let body = {};
+  try {
+    body = await request.json();
+  } catch (_) {}
+  const { id } = body;
+  if (!id) return jsonRes({ error: "id mancante" }, 400);
+  const candidates = (await getScoutingCandidates(env)).filter((x) => x.id !== id);
+  await store.put(KV_SCOUTING_CANDIDATES, JSON.stringify(candidates));
+  return jsonRes({ ok: true });
 }
 
 /* ═══════════════════════════════════════════════════════════════════
