@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<link rel="preload" as="image" href="/logo.png"/>
+<title>Scouting Ambassador — SHOCK Male Grooming</title>
+<meta name="robots" content="noindex, nofollow"/>
+<link rel="icon" href="/favicon.ico?v=shock2" sizes="any" type="image/x-icon"/>
+<link rel="icon" href="/favicon-32x32.png?v=shock2" sizes="32x32" type="image/png"/>
+<link rel="apple-touch-icon" href="/apple-touch-icon.png?v=shock2"/>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#0a0908;color:#f0ece5;font-family:system-ui,sans-serif;-webkit-font-smoothing:antialiased;min-height:100vh}
+a{color:inherit}
+.wrap{max-width:720px;margin:0 auto;padding:60px 24px 60px}
+.logo{display:block;height:36px;width:auto;margin:0 auto 32px}
+h1{font-size:1.4rem;font-weight:700;text-align:center;margin:0 0 30px}
+.card{background:#161412;border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:24px;margin-bottom:20px}
+label{display:block;font-size:.72rem;color:rgba(240,236,229,.5);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;font-weight:700}
+input,textarea{width:100%;padding:12px 14px;background:#0f0d0c;border:1px solid rgba(255,255,255,.12);border-radius:10px;color:#fff;font-size:.9rem;font-family:inherit;margin-bottom:14px;resize:vertical}
+button{background:#c9a84c;color:#0a0908;border:none;border-radius:100px;padding:11px 20px;font-weight:700;font-size:.82rem;cursor:pointer}
+button:disabled{opacity:.6;cursor:default}
+.btn-ghost{background:transparent;border:1px solid rgba(255,255,255,.18);color:rgba(240,236,229,.75);padding:8px 16px}
+.btn-green{background:rgba(76,175,80,.15);color:#4CAF50;border:1px solid rgba(76,175,80,.35)}
+.btn-red{background:rgba(224,104,94,.12);color:#e0685e;border:1px solid rgba(224,104,94,.3)}
+.err{color:#e0685e;font-size:.82rem;margin-bottom:14px}
+.msg{padding:10px 14px;border-radius:10px;margin-bottom:18px;font-size:.85rem}
+.msg.ok{background:rgba(76,175,80,.15);color:#4CAF50}
+.msg.bad{background:rgba(224,104,94,.15);color:#e0685e}
+.pending{background:rgba(255,193,7,.08);border:1px solid rgba(255,193,7,.3);color:#FFC107;font-size:.82rem;padding:8px 14px;border-radius:10px;margin-bottom:8px}
+h2{font-size:1rem;color:#fff;margin:34px 0 14px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+h2 .count{color:rgba(240,236,229,.35);font-weight:400;font-size:.8rem}
+.cand{background:#161412;border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:18px 20px;margin-bottom:14px}
+.cand-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:10px}
+.cand-name{font-weight:700;font-size:1rem;color:#fff}
+.cand-addr{color:rgba(240,236,229,.45);font-size:.78rem;margin-top:2px}
+.cand-zone{color:rgba(240,236,229,.4);font-size:.75rem;font-style:italic;margin-top:2px}
+.cand-actions{display:flex;gap:8px;flex-shrink:0}
+.cand-actions button{padding:7px 12px;font-size:.74rem;border-radius:100px}
+.summary{color:rgba(240,236,229,.7);font-size:.85rem;line-height:1.5;margin-bottom:12px}
+.stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;margin-bottom:12px}
+.stat{background:#0f0d0c;border-radius:8px;padding:8px 10px}
+.stat-lbl{color:rgba(240,236,229,.35);font-size:.62rem;text-transform:uppercase;letter-spacing:.04em}
+.stat-val{color:#fff;font-size:.82rem;font-weight:600;margin-top:2px}
+.stat-sub{color:rgba(240,236,229,.4);font-size:.7rem;margin-top:2px}
+.draft{background:#0f0d0c;border-radius:10px;padding:12px 14px;color:rgba(240,236,229,.75);font-size:.85rem;line-height:1.5;white-space:pre-wrap;margin-bottom:8px}
+.empty{color:rgba(240,236,229,.25);font-size:.85rem;padding:8px 0 18px}
+.contacted{opacity:.45}
+details summary{color:rgba(240,236,229,.4);font-size:.8rem;cursor:pointer;margin:10px 0}
+.topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.logout{background:none;border:none;color:rgba(240,236,229,.35);text-decoration:underline;font-size:.78rem;cursor:pointer;padding:0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a href="/"><img class="logo" src="/logo.png" alt="Shock Male Grooming"></a>
+  <h1>Scouting Ambassador</h1>
+  <div id="app">
+    <p style="text-align:center;color:rgba(240,236,229,.4);font-size:.85rem">Caricamento...</p>
+  </div>
+</div>
+<script>
+(function(){
+  var app = document.getElementById("app");
+
+  function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];});}
+
+  function getPwd(){ try{return sessionStorage.getItem("scouting_pwd")||"";}catch(e){return "";} }
+  function setPwd(v){ try{sessionStorage.setItem("scouting_pwd",v);}catch(e){} }
+  function clearPwd(){ try{sessionStorage.removeItem("scouting_pwd");}catch(e){} }
+
+  function SCF(path, opts){
+    opts = opts || {};
+    var headers = Object.assign({"Content-Type":"application/json","X-Admin-Password":getPwd()}, opts.headers||{});
+    return fetch("/api/scouting/"+path, Object.assign({}, opts, {headers:headers})).then(function(r){
+      return r.text().then(function(tx){
+        var data; try{data = tx?JSON.parse(tx):{};}catch(e){data={};}
+        if(!r.ok){ throw new Error(data.error || ("HTTP "+r.status)); }
+        return data;
+      });
+    });
+  }
+
+  function renderLogin(errMsg){
+    app.innerHTML =
+      (errMsg?'<p class="err">'+esc(errMsg)+'</p>':'')+
+      '<div class="card">'+
+        '<label>Password Admin</label>'+
+        '<input type="password" id="pw-input">'+
+        '<button id="pw-btn">Accedi</button>'+
+      '</div>';
+    var btn = document.getElementById("pw-btn");
+    var inp = document.getElementById("pw-input");
+    function tryLogin(){
+      var v = inp.value.trim();
+      if(!v){ renderLogin("Inserisci la password"); return; }
+      btn.disabled = true; btn.textContent = "Accesso...";
+      setPwd(v);
+      SCF("regions").then(function(){
+        renderApp();
+      }).catch(function(e){
+        clearPwd();
+        renderLogin("Password errata o errore di connessione: "+(e.message||""));
+      });
+    }
+    btn.addEventListener("click", tryLogin);
+    inp.addEventListener("keydown", function(e){ if(e.key==="Enter") tryLogin(); });
+    inp.focus();
+  }
+
+  var state = { regions: [], pending: [], candidates: [] };
+
+  function flash(msg, ok){
+    var el = document.getElementById("msg-area");
+    if(!el) return;
+    el.innerHTML = '<div class="msg '+(ok?"ok":"bad")+'">'+esc(msg)+'</div>';
+    setTimeout(function(){ if(el) el.innerHTML=""; }, 5000);
+  }
+
+  function renderApp(){
+    load();
+  }
+
+  function load(){
+    Promise.all([SCF("regions"), SCF("list")]).then(function(res){
+      state.regions = res[0].regions || [];
+      state.pending = res[0].pending || [];
+      state.candidates = res[1].candidates || [];
+      draw();
+    }).catch(function(e){
+      app.innerHTML = '<p class="err">Errore: '+esc(e.message||"")+'</p>';
+    });
+  }
+
+  function candidateCard(c){
+    var statsHtml =
+      '<div class="stats">'+
+        '<div class="stat"><div class="stat-lbl">Instagram</div><div class="stat-val">'+esc(c.instagram_handle||"—")+'</div>'+
+          (c.instagram_followers||c.instagram_activity?'<div class="stat-sub">'+esc([c.instagram_followers,c.instagram_activity].filter(Boolean).join(" · "))+'</div>':'')+
+        '</div>'+
+        '<div class="stat"><div class="stat-lbl">Sito web</div><div class="stat-val" style="color:'+(c.has_website?"#4CAF50":"#e0685e")+'">'+(c.has_website?"Sì":"No")+'</div>'+
+          (c.website_note?'<div class="stat-sub">'+esc(c.website_note)+'</div>':'')+
+        '</div>'+
+        '<div class="stat"><div class="stat-lbl">Recensioni</div><div class="stat-val">'+esc(c.reviews_rating||"—")+(c.reviews_count?' ('+esc(c.reviews_count)+')':'')+'</div></div>'+
+      '</div>';
+    var draftHtml = c.draft_message
+      ? '<label>Bozza messaggio</label><div class="draft">'+esc(c.draft_message)+'</div><button class="btn-ghost" data-copy="'+esc(c.id)+'" type="button">📋 Copia messaggio</button>'
+      : '';
+    return '<div class="cand" data-id="'+esc(c.id)+'">'+
+      '<div class="cand-head">'+
+        '<div><div class="cand-name">'+esc(c.name)+(c.instagram_handle&&!c.contacted?'':'')+'</div>'+
+          (c.address?'<div class="cand-addr">'+esc(c.address)+'</div>':'')+
+          (c.zone_note?'<div class="cand-zone">'+esc(c.zone_note)+'</div>':'')+
+        '</div>'+
+        '<div class="cand-actions">'+
+          (c.contacted
+            ? '<button class="btn-ghost" data-toggle="'+esc(c.id)+'" type="button">↺ Riattiva</button>'
+            : '<button class="btn-green" data-toggle="'+esc(c.id)+'" type="button">✓ Contattato</button>')+
+          '<button class="btn-red" data-remove="'+esc(c.id)+'" type="button">Scarta</button>'+
+        '</div>'+
+      '</div>'+
+      (c.summary?'<p class="summary">'+esc(c.summary)+'</p>':'')+
+      statsHtml+
+      draftHtml+
+    '</div>';
+  }
+
+  function draw(){
+    var byRegion = {};
+    state.regions.forEach(function(r){ byRegion[r] = []; });
+    state.candidates.forEach(function(c){
+      if(!byRegion[c.region]) byRegion[c.region] = [];
+      byRegion[c.region].push(c);
+    });
+
+    var pendingHtml = state.pending.length
+      ? state.pending.map(function(p){
+          return '<div class="pending">⏳ '+esc(p.region)+' — richiesta il '+new Date(p.requested_at).toLocaleDateString("it-IT")+'</div>';
+        }).join("")
+      : "";
+
+    var regionsHtml = state.regions.map(function(region){
+      var list = byRegion[region] || [];
+      var active = list.filter(function(c){ return !c.contacted; });
+      var done = list.filter(function(c){ return c.contacted; });
+      var html = '<h2>'+esc(region)+' <span class="count">('+active.length+' da valutare'+(done.length?", "+done.length+" contattati":"")+')</span>'+
+        '<button class="btn-ghost" data-search="'+esc(region)+'" type="button" style="font-size:.74rem;padding:6px 14px">↻ Aggiorna ricerca</button></h2>';
+      if(!list.length){
+        html += '<p class="empty">Nessun candidato ancora — premi "Aggiorna ricerca" e chiedi a Claude di cercarne.</p>';
+      }
+      html += active.map(candidateCard).join("");
+      if(done.length){
+        html += '<details><summary>Già contattati ('+done.length+')</summary>'+
+          done.map(function(c){ return '<div class="contacted">'+candidateCard(c)+'</div>'; }).join("")+
+        '</details>';
+      }
+      return html;
+    }).join("");
+
+    app.innerHTML =
+      '<div class="topbar"><div id="msg-area" style="flex:1"></div><button class="logout" id="logout-btn" type="button">Esci</button></div>'+
+      '<div class="card">'+
+        '<label>Regioni attive (separate da virgola)</label>'+
+        '<textarea id="regions-input" rows="2">'+esc(state.regions.join(", "))+'</textarea>'+
+        '<button id="save-regions-btn" type="button">Salva regioni</button>'+
+      '</div>'+
+      pendingHtml+
+      regionsHtml;
+
+    document.getElementById("logout-btn").addEventListener("click", function(){
+      clearPwd();
+      renderLogin();
+    });
+
+    document.getElementById("save-regions-btn").addEventListener("click", function(){
+      var list = document.getElementById("regions-input").value.split(",").map(function(s){return s.trim();}).filter(Boolean);
+      SCF("regions", {method:"POST", body:JSON.stringify({regions:list})}).then(function(r){
+        state.regions = r.regions || [];
+        state.pending = r.pending || [];
+        draw();
+        flash("Regioni salvate", true);
+      }).catch(function(e){ flash("Errore: "+(e.message||""), false); });
+    });
+
+    app.querySelectorAll("[data-search]").forEach(function(btn){
+      btn.addEventListener("click", function(){
+        var region = btn.getAttribute("data-search");
+        btn.disabled = true;
+        SCF("request-search", {method:"POST", body:JSON.stringify({region:region})}).then(function(r){
+          state.pending = r.pending || [];
+          draw();
+          flash("Richiesta di ricerca per "+region+" messa in coda", true);
+        }).catch(function(e){ flash("Errore: "+(e.message||""), false); btn.disabled=false; });
+      });
+    });
+
+    app.querySelectorAll("[data-toggle]").forEach(function(btn){
+      btn.addEventListener("click", function(){
+        var id = btn.getAttribute("data-toggle");
+        var c = state.candidates.find(function(x){ return x.id===id; });
+        if(!c) return;
+        SCF("update", {method:"POST", body:JSON.stringify({id:id, contacted:!c.contacted})}).then(function(r){
+          var idx = state.candidates.findIndex(function(x){ return x.id===id; });
+          state.candidates[idx] = r.candidate;
+          draw();
+        }).catch(function(e){ flash("Errore: "+(e.message||""), false); });
+      });
+    });
+
+    app.querySelectorAll("[data-remove]").forEach(function(btn){
+      btn.addEventListener("click", function(){
+        var id = btn.getAttribute("data-remove");
+        if(!window.confirm("Scartare definitivamente questo candidato?")) return;
+        SCF("remove", {method:"POST", body:JSON.stringify({id:id})}).then(function(){
+          state.candidates = state.candidates.filter(function(x){ return x.id!==id; });
+          draw();
+        }).catch(function(e){ flash("Errore: "+(e.message||""), false); });
+      });
+    });
+
+    app.querySelectorAll("[data-copy]").forEach(function(btn){
+      btn.addEventListener("click", function(){
+        var id = btn.getAttribute("data-copy");
+        var c = state.candidates.find(function(x){ return x.id===id; });
+        if(!c) return;
+        var orig = btn.textContent;
+        var done = function(){ btn.textContent = "✓ Copiato"; setTimeout(function(){ btn.textContent = orig; }, 2000); };
+        if(navigator.clipboard && navigator.clipboard.writeText){
+          navigator.clipboard.writeText(c.draft_message||"").then(done).catch(done);
+        } else {
+          done();
+        }
+      });
+    });
+  }
+
+  var existing = getPwd();
+  if(existing){
+    SCF("regions").then(function(){ renderApp(); }).catch(function(){ clearPwd(); renderLogin(); });
+  } else {
+    renderLogin();
+  }
+})();
+</script>
+</body>
+</html>

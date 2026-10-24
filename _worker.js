@@ -92,16 +92,6 @@ export default {
     if (pathname === "/api/scouting/remove") return handleScoutingRemove(request, env);
     if (pathname === "/api/scouting/request-search") return handleScoutingRequestSearch(request, env);
 
-    // /scouting esisteva come pagina a se' stante ed e' stata rimossa (ora
-    // "Scouting" e' una scheda dentro /admin) — ma Cloudflare continuava a
-    // servire una copia in cache della vecchia pagina anche dopo la
-    // rimozione del file e una purge manuale. Rispondere qui, nel worker,
-    // con un redirect bypassa del tutto quella cache fantasma degli asset
-    // statici.
-    if (pathname === "/scouting" || pathname === "/scouting.html" || pathname === "/scouting/") {
-      return Response.redirect(new URL("/admin", request.url).toString(), 302);
-    }
-
     if (pathname === "/api/dev/enter") return devEnter(request, env);
     if (pathname === "/api/dev/exit") return devExit(request, env);
     if (pathname === "/api/dev/state") return devState(request, env);
@@ -2074,7 +2064,9 @@ function isAdminArea(pathname) {
     pathname === "/admin" ||
     pathname === "/admin/" ||
     pathname === "/admin.html" ||
-    pathname.indexOf("/admin/") === 0
+    pathname.indexOf("/admin/") === 0 ||
+    pathname === "/scouting" ||
+    pathname === "/scouting.html"
   );
 }
 

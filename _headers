@@ -45,3 +45,9 @@
 
 /reset-password.html
   Cache-Control: no-cache, no-store, must-revalidate
+
+/scouting
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/scouting.html
+  Cache-Control: no-cache, no-store, must-revalidate
