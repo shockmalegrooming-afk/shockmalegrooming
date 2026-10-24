@@ -13,49 +13,61 @@
 *{box-sizing:border-box}
 body{margin:0;background:#0a0908;color:#f0ece5;font-family:system-ui,sans-serif;-webkit-font-smoothing:antialiased;min-height:100vh}
 a{color:inherit}
-.wrap{max-width:720px;margin:0 auto;padding:60px 24px 60px}
-.logo{display:block;height:36px;width:auto;margin:0 auto 32px}
-h1{font-size:1.4rem;font-weight:700;text-align:center;margin:0 0 30px}
-.card{background:#161412;border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:24px;margin-bottom:20px}
-label{display:block;font-size:.72rem;color:rgba(240,236,229,.5);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;font-weight:700}
+.wrap{max-width:880px;margin:0 auto;padding:56px 24px 80px}
+.logo{display:block;height:34px;width:auto;margin:0 auto 24px}
+h1{font-size:1.5rem;font-weight:800;text-align:center;margin:0 0 6px;letter-spacing:-.01em}
+.tagline{text-align:center;color:rgba(240,236,229,.4);font-size:.82rem;margin:0 0 32px}
+.card{background:#161412;border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:22px 24px;margin-bottom:20px}
+label{display:block;font-size:.68rem;color:rgba(240,236,229,.5);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px;font-weight:700}
 input,textarea{width:100%;padding:12px 14px;background:#0f0d0c;border:1px solid rgba(255,255,255,.12);border-radius:10px;color:#fff;font-size:.9rem;font-family:inherit;margin-bottom:14px;resize:vertical}
-button{background:#c9a84c;color:#0a0908;border:none;border-radius:100px;padding:11px 20px;font-weight:700;font-size:.82rem;cursor:pointer}
-button:disabled{opacity:.6;cursor:default}
-.btn-ghost{background:transparent;border:1px solid rgba(255,255,255,.18);color:rgba(240,236,229,.75);padding:8px 16px}
+button{background:#c9a84c;color:#0a0908;border:none;border-radius:100px;padding:11px 20px;font-weight:700;font-size:.82rem;cursor:pointer;transition:filter .15s}
+button:hover{filter:brightness(1.08)}
+button:disabled{opacity:.55;cursor:default}
+.btn-ghost{background:transparent;border:1px solid rgba(255,255,255,.18);color:rgba(240,236,229,.75)}
 .btn-green{background:rgba(76,175,80,.15);color:#4CAF50;border:1px solid rgba(76,175,80,.35)}
-.btn-red{background:rgba(224,104,94,.12);color:#e0685e;border:1px solid rgba(224,104,94,.3)}
+.btn-red{background:rgba(224,104,94,.1);color:#e0685e;border:1px solid rgba(224,104,94,.28)}
 .err{color:#e0685e;font-size:.82rem;margin-bottom:14px}
-.msg{padding:10px 14px;border-radius:10px;margin-bottom:18px;font-size:.85rem}
+.msg{padding:10px 14px;border-radius:10px;margin-bottom:0;font-size:.85rem}
 .msg.ok{background:rgba(76,175,80,.15);color:#4CAF50}
 .msg.bad{background:rgba(224,104,94,.15);color:#e0685e}
-.pending{background:rgba(255,193,7,.08);border:1px solid rgba(255,193,7,.3);color:#FFC107;font-size:.82rem;padding:8px 14px;border-radius:10px;margin-bottom:8px}
-h2{font-size:1rem;color:#fff;margin:34px 0 14px;display:flex;align-items:center;justify-content:space-between;gap:10px}
-h2 .count{color:rgba(240,236,229,.35);font-weight:400;font-size:.8rem}
-.cand{background:#161412;border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:18px 20px;margin-bottom:14px}
-.cand-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:10px}
-.cand-name{font-weight:700;font-size:1rem;color:#fff}
-.cand-addr{color:rgba(240,236,229,.45);font-size:.78rem;margin-top:2px}
-.cand-zone{color:rgba(240,236,229,.4);font-size:.75rem;font-style:italic;margin-top:2px}
+.pending{background:rgba(255,193,7,.08);border:1px solid rgba(255,193,7,.3);color:#FFC107;font-size:.82rem;padding:9px 14px;border-radius:10px;margin-bottom:8px}
+.region-head{display:flex;align-items:center;justify-content:space-between;gap:14px;margin:40px 0 16px;padding-bottom:12px;border-bottom:1px solid rgba(255,255,255,.08)}
+.region-head h2{font-size:1.15rem;font-weight:800;color:#fff;margin:0;letter-spacing:-.01em}
+.region-head .count{color:rgba(240,236,229,.35);font-weight:400;font-size:.78rem;margin-left:8px}
+.region-head button{font-size:.74rem;padding:7px 15px;flex-shrink:0}
+.cand{position:relative;background:linear-gradient(180deg,#19160f 0%,#161412 100%);border:1px solid rgba(255,255,255,.08);border-left:3px solid rgba(201,168,76,.5);border-radius:14px;padding:20px 22px;margin-bottom:16px}
+.cand.conflict{border-left-color:#e0685e}
+.cand-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:12px}
+.cand-name{font-weight:800;font-size:1.1rem;color:#fff;letter-spacing:-.01em}
+.cand-addr{color:rgba(240,236,229,.45);font-size:.8rem;margin-top:3px}
+.cand-zone{color:rgba(240,236,229,.4);font-size:.76rem;font-style:italic;margin-top:3px}
 .cand-actions{display:flex;gap:8px;flex-shrink:0}
-.cand-actions button{padding:7px 12px;font-size:.74rem;border-radius:100px}
-.summary{color:rgba(240,236,229,.7);font-size:.85rem;line-height:1.5;margin-bottom:12px}
-.stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;margin-bottom:12px}
-.stat{background:#0f0d0c;border-radius:8px;padding:8px 10px}
-.stat-lbl{color:rgba(240,236,229,.35);font-size:.62rem;text-transform:uppercase;letter-spacing:.04em}
-.stat-val{color:#fff;font-size:.82rem;font-weight:600;margin-top:2px}
-.stat-sub{color:rgba(240,236,229,.4);font-size:.7rem;margin-top:2px}
-.draft{background:#0f0d0c;border-radius:10px;padding:12px 14px;color:rgba(240,236,229,.75);font-size:.85rem;line-height:1.5;white-space:pre-wrap;margin-bottom:8px}
-.empty{color:rgba(240,236,229,.25);font-size:.85rem;padding:8px 0 18px}
-.contacted{opacity:.45}
-details summary{color:rgba(240,236,229,.4);font-size:.8rem;cursor:pointer;margin:10px 0}
-.topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
-.logout{background:none;border:none;color:rgba(240,236,229,.35);text-decoration:underline;font-size:.78rem;cursor:pointer;padding:0}
+.cand-actions button{padding:7px 13px;font-size:.73rem;border-radius:100px;white-space:nowrap}
+.summary{color:rgba(240,236,229,.72);font-size:.86rem;line-height:1.55;margin:0 0 14px}
+.warn-box{background:rgba(224,104,94,.1);border:1px solid rgba(224,104,94,.3);border-radius:10px;padding:10px 14px;font-size:.8rem;color:#e0685e;margin-bottom:14px;display:flex;gap:8px;align-items:flex-start;line-height:1.4}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:14px}
+.stat{background:#0f0d0c;border-radius:9px;padding:10px 12px}
+.stat-lbl{color:rgba(240,236,229,.35);font-size:.6rem;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px}
+.stat-val{color:#fff;font-size:.84rem;font-weight:700}
+.stat-sub{color:rgba(240,236,229,.4);font-size:.7rem;margin-top:2px;line-height:1.4}
+.draft-wrap{background:#0f0d0c;border:1px solid rgba(201,168,76,.15);border-radius:12px;padding:14px 16px;margin-top:4px}
+.draft-wrap label{margin-bottom:8px}
+.draft{color:rgba(240,236,229,.78);font-size:.85rem;line-height:1.6;white-space:pre-wrap;margin-bottom:10px}
+.empty{color:rgba(240,236,229,.25);font-size:.85rem;padding:4px 0 20px}
+.contacted{opacity:.4}
+details summary{color:rgba(240,236,229,.4);font-size:.8rem;cursor:pointer;margin:12px 0;user-select:none}
+.topbar{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:14px;min-height:20px}
+.logout{background:none;border:none;color:rgba(240,236,229,.35);text-decoration:underline;font-size:.78rem;cursor:pointer;padding:0;flex-shrink:0}
+.badge{display:inline-block;font-size:.62rem;font-weight:800;text-transform:uppercase;letter-spacing:.05em;padding:3px 9px;border-radius:100px;margin-left:8px;vertical-align:middle}
+.badge-ok{background:rgba(76,175,80,.15);color:#4CAF50}
+.badge-warn{background:rgba(224,104,94,.15);color:#e0685e}
 </style>
 </head>
 <body>
 <div class="wrap">
   <a href="/"><img class="logo" src="/logo.png" alt="Shock Male Grooming"></a>
   <h1>Scouting Ambassador</h1>
+  <p class="tagline">Candidati barbieri per il programma Ambassador, regione per regione</p>
   <div id="app">
     <p style="text-align:center;color:rgba(240,236,229,.4);font-size:.85rem">Caricamento...</p>
   </div>
@@ -135,6 +147,10 @@ details summary{color:rgba(240,236,229,.4);font-size:.8rem;cursor:pointer;margin
   }
 
   function candidateCard(c){
+    var isConflict = c.own_product_line === "yes";
+    var ownLineLabel = c.own_product_line === "yes" ? "Sì, propria" : (c.own_product_line === "no" ? "No" : "Da verificare");
+    var ownLineColor = c.own_product_line === "yes" ? "#e0685e" : (c.own_product_line === "no" ? "#4CAF50" : "rgba(240,236,229,.5)");
+
     var statsHtml =
       '<div class="stats">'+
         '<div class="stat"><div class="stat-lbl">Instagram</div><div class="stat-val">'+esc(c.instagram_handle||"—")+'</div>'+
@@ -144,13 +160,26 @@ details summary{color:rgba(240,236,229,.4);font-size:.8rem;cursor:pointer;margin
           (c.website_note?'<div class="stat-sub">'+esc(c.website_note)+'</div>':'')+
         '</div>'+
         '<div class="stat"><div class="stat-lbl">Recensioni</div><div class="stat-val">'+esc(c.reviews_rating||"—")+(c.reviews_count?' ('+esc(c.reviews_count)+')':'')+'</div></div>'+
+        '<div class="stat"><div class="stat-lbl">Linea prodotti propria</div><div class="stat-val" style="color:'+ownLineColor+'">'+ownLineLabel+'</div>'+
+          (c.own_product_line_note?'<div class="stat-sub">'+esc(c.own_product_line_note)+'</div>':'')+
+        '</div>'+
       '</div>';
-    var draftHtml = c.draft_message
-      ? '<label>Bozza messaggio</label><div class="draft">'+esc(c.draft_message)+'</div><button class="btn-ghost" data-copy="'+esc(c.id)+'" type="button">📋 Copia messaggio</button>'
+
+    var warnHtml = isConflict
+      ? '<div class="warn-box">⚠️ <span>Ha già una propria linea di prodotti'+(c.own_product_line_note?': '+esc(c.own_product_line_note):'')+' — possibile conflitto di interesse, valuta con attenzione prima di contattarlo.</span></div>'
       : '';
-    return '<div class="cand" data-id="'+esc(c.id)+'">'+
+
+    var draftHtml = c.draft_message
+      ? '<div class="draft-wrap">'+
+          '<label>Bozza messaggio</label>'+
+          '<div class="draft">'+esc(c.draft_message)+'</div>'+
+          '<button class="btn-ghost" data-copy="'+esc(c.id)+'" type="button">📋 Copia messaggio</button>'+
+        '</div>'
+      : '';
+
+    return '<div class="cand'+(isConflict?" conflict":"")+'" data-id="'+esc(c.id)+'">'+
       '<div class="cand-head">'+
-        '<div><div class="cand-name">'+esc(c.name)+(c.instagram_handle&&!c.contacted?'':'')+'</div>'+
+        '<div><div class="cand-name">'+esc(c.name)+(isConflict?'<span class="badge badge-warn">conflitto</span>':(c.reviews_rating&&parseFloat(c.reviews_rating)>=4.7?'<span class="badge badge-ok">ottimo</span>':''))+'</div>'+
           (c.address?'<div class="cand-addr">'+esc(c.address)+'</div>':'')+
           (c.zone_note?'<div class="cand-zone">'+esc(c.zone_note)+'</div>':'')+
         '</div>'+
@@ -162,6 +191,7 @@ details summary{color:rgba(240,236,229,.4);font-size:.8rem;cursor:pointer;margin
         '</div>'+
       '</div>'+
       (c.summary?'<p class="summary">'+esc(c.summary)+'</p>':'')+
+      warnHtml+
       statsHtml+
       draftHtml+
     '</div>';
@@ -185,8 +215,8 @@ details summary{color:rgba(240,236,229,.4);font-size:.8rem;cursor:pointer;margin
       var list = byRegion[region] || [];
       var active = list.filter(function(c){ return !c.contacted; });
       var done = list.filter(function(c){ return c.contacted; });
-      var html = '<h2>'+esc(region)+' <span class="count">('+active.length+' da valutare'+(done.length?", "+done.length+" contattati":"")+')</span>'+
-        '<button class="btn-ghost" data-search="'+esc(region)+'" type="button" style="font-size:.74rem;padding:6px 14px">↻ Aggiorna ricerca</button></h2>';
+      var html = '<div class="region-head"><h2>'+esc(region)+' <span class="count">('+active.length+' da valutare'+(done.length?", "+done.length+" contattati":"")+')</span></h2>'+
+        '<button class="btn-ghost" data-search="'+esc(region)+'" type="button">↻ Aggiorna ricerca</button></div>';
       if(!list.length){
         html += '<p class="empty">Nessun candidato ancora — premi "Aggiorna ricerca" e chiedi a Claude di cercarne.</p>';
       }

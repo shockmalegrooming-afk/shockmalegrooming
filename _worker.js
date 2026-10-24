@@ -1893,6 +1893,8 @@ async function handleScoutingAdd(request, env) {
       website_note: c.website_note || "",
       reviews_rating: c.reviews_rating || "",
       reviews_count: c.reviews_count || "",
+      own_product_line: c.own_product_line || "da verificare",
+      own_product_line_note: c.own_product_line_note || "",
       summary: c.summary || "",
       draft_message: c.draft_message || "",
       contacted: false,
@@ -1928,6 +1930,16 @@ async function handleScoutingUpdate(request, env) {
   const c = candidates.find((x) => x.id === id);
   if (!c) return jsonRes({ error: "Candidato non trovato" }, 404);
   if (typeof contacted === "boolean") c.contacted = contacted;
+  // Qualsiasi altro campo del candidato puo' essere aggiornato passandolo
+  // nel body (es. per correggere/arricchire un dato dopo la ricerca).
+  const EDITABLE_FIELDS = [
+    "name", "address", "zone_note", "instagram_handle", "instagram_followers", "instagram_activity",
+    "has_website", "website_url", "website_note", "reviews_rating", "reviews_count",
+    "own_product_line", "own_product_line_note", "summary", "draft_message",
+  ];
+  for (const f of EDITABLE_FIELDS) {
+    if (Object.prototype.hasOwnProperty.call(body, f)) c[f] = body[f];
+  }
   await store.put(KV_SCOUTING_CANDIDATES, JSON.stringify(candidates));
   return jsonRes({ ok: true, candidate: c });
 }
