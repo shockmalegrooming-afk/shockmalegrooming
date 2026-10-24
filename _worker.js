@@ -1935,9 +1935,9 @@ async function runAutomatedScoutingSearch(env, region) {
     `summary (stringa di 2-3 frasi in italiano sulla storia/stile del negozio, basata SOLO sui dati forniti), ` +
     `draft_message (stringa, messaggio di contatto in italiano da inviare su Instagram. Scrivilo come testo fluido senza etichettare i blocchi, ma DEVE seguire esattamente questa struttura in 4 punti:\n` +
     `  1) Apertura con "Ciao! Ti scrivo dal team di SHOCK Male Grooming" seguita SUBITO da UN dettaglio concreto e specifico preso dai dati forniti su QUESTO negozio (uno stile preciso, una recensione, un numero, il nome del titolare se noto, la zona) — deve creare curiosita' e dimostrare che hai guardato davvero il loro profilo, mai un elogio generico tipo "siete fantastici".\n` +
-    `  2) Una frase breve su chi e' SHOCK Male Grooming: marchio italiano di prodotti professionali per barba e capelli, pensato per chi lavora davvero dietro la sedia ogni giorno — con autorevolezza ma senza vantarsi a vuoto.\n` +
-    `  3) Spiegazione CONCRETA (non vaga) di cos'e' il programma Ambassador: prodotti a prezzo riservato per il negozio, un codice sconto personale da dare ai propri clienti, e una parte di ogni vendita generata con quel codice.\n` +
-    `  4) Un invito a basso attrito, una domanda breve che lascia la palla a loro (es. se vogliono ricevere i dettagli), MAI "fare una call" o "due chiacchiere".\n` +
+    `  2) Una frase breve su chi siamo: SHOCK Male Grooming, un negozio/marchio italiano di prodotti per capelli e barba per l'uomo — con autorevolezza ma senza vantarsi a vuoto.\n` +
+    `  3) Spiega che cerchiamo barbieri/negozi che possano valorizzare la nostra immagine portando i nostri prodotti nel loro negozio, e che per chi viene selezionato ci sono condizioni riservate — SENZA MAI specificare i dettagli concreti (NIENTE percentuali, NIENTE "codice sconto", NIENTE meccaniche esatte): deve restare un accenno che incuriosisce, non una spiegazione completa.\n` +
+    `  4) Un invito a basso attrito, una domanda breve che lascia la palla a loro per saperne di piu' (es. se vogliono ricevere i dettagli), MAI "fare una call" o "due chiacchiere".\n` +
     `  Vietate le frasi fatte da messaggio broadcast ("selezione ristretta", "zero burocrazia", "due chiacchiere", "ci ha colpito") se non accompagnate da un dettaglio reale e specifico di quel negozio. Tono umano, diretto, mai istituzionale o da comunicato stampa. Massimo 90 parole).`;
 
   const r = await fetch("https://api.groq.com/openai/v1/chat/completions", {
