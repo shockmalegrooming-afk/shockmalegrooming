@@ -91,6 +91,7 @@ export default {
     if (pathname === "/api/scouting/update") return handleScoutingUpdate(request, env);
     if (pathname === "/api/scouting/remove") return handleScoutingRemove(request, env);
     if (pathname === "/api/scouting/request-search") return handleScoutingRequestSearch(request, env);
+    if (pathname === "/api/scouting/_test-groq-search") return handleTestGroqSearch(request, env);
 
     if (pathname === "/api/dev/enter") return devEnter(request, env);
     if (pathname === "/api/dev/exit") return devExit(request, env);
@@ -1822,6 +1823,28 @@ async function handleScoutingRegions(request, env) {
     return jsonRes({ ok: true, ...cfg });
   }
   return jsonRes({ error: "Metodo non consentito" }, 405);
+}
+
+// Diagnostica temporanea: verifica se il modello Groq con ricerca web
+// (compound) riesce davvero a cercare sul web e tornare dati reali.
+async function handleTestGroqSearch(request, env) {
+  const pwd = request.headers.get("X-Admin-Password") || "";
+  if (!env.ADMIN_PASSWORD || pwd !== env.ADMIN_PASSWORD) return jsonRes({ error: "Non autorizzato" }, 401);
+  if (!env.GROQ_API_KEY) return jsonRes({ error: "GROQ_API_KEY non configurata" }, 400);
+  try {
+    const r = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${env.GROQ_API_KEY}` },
+      body: JSON.stringify({
+        model: "groq/compound",
+        messages: [{ role: "user", content: "Cerca sul web e dimmi: che tempo fa oggi a Milano? Rispondi in una frase, in italiano." }],
+      }),
+    });
+    const body = await r.json().catch(() => ({}));
+    return jsonRes({ status: r.status, body });
+  } catch (e) {
+    return jsonRes({ error: String(e).slice(0, 300) }, 500);
+  }
 }
 
 async function handleScoutingRequestSearch(request, env) {
