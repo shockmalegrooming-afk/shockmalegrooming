@@ -1950,6 +1950,7 @@ async function runAutomatedScoutingSearch(env, region) {
   });
   const body = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error("Groq: " + (body.error?.message || JSON.stringify(body).slice(0, 200)));
+  const finishReason = body.choices?.[0]?.finish_reason || "";
   const text = body.choices?.[0]?.message?.content || "";
   let jsonText = text.trim();
   const fenceMatch = jsonText.match(/```(?:json)?\s*([\s\S]*?)```/);
@@ -1960,7 +1961,10 @@ async function runAutomatedScoutingSearch(env, region) {
   try {
     parsed = JSON.parse(jsonText);
   } catch (e) {
-    throw new Error("Risposta AI non interpretabile come JSON: " + String(e).slice(0, 150));
+    throw new Error(
+      "Risposta AI non interpretabile come JSON (finish_reason=" + finishReason + ", len=" + jsonText.length + "): " +
+        String(e).slice(0, 150) + " | coda: " + jsonText.slice(-300)
+    );
   }
   if (!Array.isArray(parsed)) throw new Error("Risposta AI non e' un array");
   return parsed.map((c) => ({ ...c, region }));
