@@ -129,7 +129,8 @@ details summary{color:rgba(240,236,229,.4);font-size:.8rem;cursor:pointer;margin
       state.candidates = res[1].candidates || [];
       draw();
     }).catch(function(e){
-      app.innerHTML = '<p class="err">Errore: '+esc(e.message||"")+'</p>';
+      clearPwd();
+      renderLogin("Sessione scaduta o password non valida: "+(e.message||"")+" — accedi di nuovo.");
     });
   }
 
