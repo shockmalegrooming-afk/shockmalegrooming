@@ -2064,9 +2064,7 @@ function isAdminArea(pathname) {
     pathname === "/admin" ||
     pathname === "/admin/" ||
     pathname === "/admin.html" ||
-    pathname.indexOf("/admin/") === 0 ||
-    pathname === "/scouting" ||
-    pathname === "/scouting.html"
+    pathname.indexOf("/admin/") === 0
   );
 }
 
