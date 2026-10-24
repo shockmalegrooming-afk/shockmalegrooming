@@ -1846,7 +1846,6 @@ async function handleTestGroqSearch(request, env) {
     return jsonRes({ error: String(e).slice(0, 300) }, 500);
   }
 }
-}
 
 async function handleTestGroqSearchOld(request, env) {
   const pwd = request.headers.get("X-Admin-Password") || "";
