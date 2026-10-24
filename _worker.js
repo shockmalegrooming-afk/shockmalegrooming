@@ -1832,6 +1832,22 @@ async function handleTestGroqSearch(request, env) {
   if (!env.ADMIN_PASSWORD || pwd !== env.ADMIN_PASSWORD) return jsonRes({ error: "Non autorizzato" }, 401);
   if (!env.GROQ_API_KEY) return jsonRes({ error: "GROQ_API_KEY non configurata" }, 400);
   try {
+    const modelsR = await fetch("https://api.groq.com/openai/v1/models", {
+      headers: { Authorization: `Bearer ${env.GROQ_API_KEY}` },
+    });
+    const modelsBody = await modelsR.json().catch(() => ({}));
+    const modelIds = (modelsBody.data || []).map((m) => m.id);
+    return jsonRes({ models: modelIds });
+  } catch (e) {
+    return jsonRes({ error: String(e).slice(0, 300) }, 500);
+  }
+}
+
+async function handleTestGroqSearchOld(request, env) {
+  const pwd = request.headers.get("X-Admin-Password") || "";
+  if (!env.ADMIN_PASSWORD || pwd !== env.ADMIN_PASSWORD) return jsonRes({ error: "Non autorizzato" }, 401);
+  if (!env.GROQ_API_KEY) return jsonRes({ error: "GROQ_API_KEY non configurata" }, 400);
+  try {
     const r = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${env.GROQ_API_KEY}` },
