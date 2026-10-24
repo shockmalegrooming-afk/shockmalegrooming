@@ -91,7 +91,7 @@ export default {
     if (pathname === "/api/scouting/update") return handleScoutingUpdate(request, env);
     if (pathname === "/api/scouting/remove") return handleScoutingRemove(request, env);
     if (pathname === "/api/scouting/request-search") return handleScoutingRequestSearch(request, env);
-    if (pathname === "/api/scouting/_test-groq-search") return handleTestGroqSearch(request, env);
+    if (pathname === "/api/scouting/testgroqsearch") return handleTestGroqSearch(request, env);
 
     if (pathname === "/api/dev/enter") return devEnter(request, env);
     if (pathname === "/api/dev/exit") return devExit(request, env);
