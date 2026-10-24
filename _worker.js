@@ -1919,13 +1919,13 @@ async function runAutomatedScoutingSearch(env, region) {
   const systemPrompt =
     "Sei un analista che aiuta SHOCK Male Grooming (brand italiano di prodotti per barba e capelli) a selezionare barbieri indipendenti a cui proporre una collaborazione come Ambassador. " +
     "Lavori SOLO con i risultati di ricerca web forniti: non inventare mai dati (follower, indirizzi, valutazioni) che non siano presenti o deducibili dal testo. Se un dato non e' disponibile scrivi \"da verificare\". " +
-    "Individua al massimo 5 negozi di barbiere DISTINTI (stessa attivita' commerciale, non post diversi dello stesso negozio), con buona reputazione se le recensioni sono menzionate e una presenza social reale e attiva (non serve che siano tantissimo seguiti, basta che i contenuti sembrino credibili e regolari).";
+    "Individua al massimo 3 negozi di barbiere DISTINTI (stessa attivita' commerciale, non post diversi dello stesso negozio), con buona reputazione se le recensioni sono menzionate e una presenza social reale e attiva (non serve che siano tantissimo seguiti, basta che i contenuti sembrino credibili e regolari).";
 
   const userPrompt =
     `Regione: ${region}\n\n` +
     `Risultati di ricerca web:\n${sourcesText}\n\n` +
     (knownNames.length ? `Barbieri gia' trovati in precedenza per questa regione (NON riproporli): ${knownNames.join(", ")}\n\n` : "") +
-    `Restituisci SOLO un array JSON (nessun testo prima o dopo, nessun blocco di codice markdown) con al massimo 5 oggetti, ciascuno con ESATTAMENTE questi campi:\n` +
+    `Restituisci SOLO un array JSON (nessun testo prima o dopo, nessun blocco di codice markdown) con al massimo 3 oggetti, ciascuno con ESATTAMENTE questi campi:\n` +
     `name (string), address (string, citta'/zona se nota altrimenti "da verificare"), zone_note (string, breve), ` +
     `instagram_handle (string senza @, vuoto se non trovato), instagram_followers (string, es. "1.2k" o "da verificare"), ` +
     `instagram_activity (string, breve valutazione qualitativa es. "pubblica regolarmente contenuti di buona qualita'" o "da verificare"), ` +
@@ -1945,7 +1945,7 @@ async function runAutomatedScoutingSearch(env, region) {
         { role: "user", content: userPrompt },
       ],
       temperature: 0.4,
-      max_tokens: 3000,
+      max_tokens: 7000,
     }),
   });
   const body = await r.json().catch(() => ({}));
