@@ -1867,6 +1867,105 @@ async function handleTestGroqSearchOld(request, env) {
   }
 }
 
+// Interroga Tavily (motore di ricerca web, nessuna carta richiesta per la
+// chiave gratuita) e torna i risultati grezzi per una query.
+async function tavilySearch(env, query, maxResults) {
+  const r = await fetch("https://api.tavily.com/search", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${env.TAVILY_API_KEY}` },
+    body: JSON.stringify({ query, max_results: maxResults || 6 }),
+  });
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error("Tavily: " + (body.error || JSON.stringify(body).slice(0, 200)));
+  return Array.isArray(body.results) ? body.results : [];
+}
+
+// Pipeline di ricerca automatica per una regione: Tavily trova le fonti sul
+// web, Groq sintetizza i risultati grezzi in candidati strutturati. Nessuna
+// chiamata ad Anthropic/Claude e nessun servizio che richieda una carta.
+async function runAutomatedScoutingSearch(env, region) {
+  if (!env.TAVILY_API_KEY) throw new Error("TAVILY_API_KEY non configurata su Cloudflare");
+  if (!env.GROQ_API_KEY) throw new Error("GROQ_API_KEY non configurata su Cloudflare");
+
+  const queries = [
+    `miglior barbiere ${region} recensioni instagram`,
+    `barber shop ${region} instagram seguaci recensioni`,
+    `barbiere artigianale ${region} propria linea prodotti barba styling`,
+  ];
+  const seenUrls = new Set();
+  const rawResults = [];
+  for (const q of queries) {
+    try {
+      const results = await tavilySearch(env, q, 6);
+      for (const res of results) {
+        if (!res.url || seenUrls.has(res.url)) continue;
+        seenUrls.add(res.url);
+        rawResults.push({ url: res.url, title: res.title || "", content: (res.content || "").slice(0, 500) });
+      }
+    } catch (_) {
+      // una query puo' fallire senza bloccare le altre
+    }
+  }
+  if (!rawResults.length) return [];
+
+  const existing = await getScoutingCandidates(env);
+  const knownNames = existing
+    .filter((c) => c.region === region)
+    .map((c) => c.instagram_handle || c.name)
+    .filter(Boolean);
+
+  const sourcesText = rawResults.map((r, i) => `[${i + 1}] ${r.title}\nURL: ${r.url}\nEstratto: ${r.content}`).join("\n\n");
+
+  const systemPrompt =
+    "Sei un analista che aiuta SHOCK Male Grooming (brand italiano di prodotti per barba e capelli) a selezionare barbieri indipendenti a cui proporre una collaborazione come Ambassador. " +
+    "Lavori SOLO con i risultati di ricerca web forniti: non inventare mai dati (follower, indirizzi, valutazioni) che non siano presenti o deducibili dal testo. Se un dato non e' disponibile scrivi \"da verificare\". " +
+    "Individua al massimo 5 negozi di barbiere DISTINTI (stessa attivita' commerciale, non post diversi dello stesso negozio), con buona reputazione se le recensioni sono menzionate e una presenza social reale e attiva (non serve che siano tantissimo seguiti, basta che i contenuti sembrino credibili e regolari).";
+
+  const userPrompt =
+    `Regione: ${region}\n\n` +
+    `Risultati di ricerca web:\n${sourcesText}\n\n` +
+    (knownNames.length ? `Barbieri gia' trovati in precedenza per questa regione (NON riproporli): ${knownNames.join(", ")}\n\n` : "") +
+    `Restituisci SOLO un array JSON (nessun testo prima o dopo, nessun blocco di codice markdown) con al massimo 5 oggetti, ciascuno con ESATTAMENTE questi campi:\n` +
+    `name (string), address (string, citta'/zona se nota altrimenti "da verificare"), zone_note (string, breve), ` +
+    `instagram_handle (string senza @, vuoto se non trovato), instagram_followers (string, es. "1.2k" o "da verificare"), ` +
+    `instagram_activity (string, breve valutazione qualitativa es. "pubblica regolarmente contenuti di buona qualita'" o "da verificare"), ` +
+    `has_website (true/false), website_url (string, vuoto se assente), website_note (string, breve), ` +
+    `reviews_rating (string, es. "4.8" o "da verificare"), reviews_count (string, es. "120 recensioni" o "da verificare"), ` +
+    `own_product_line ("yes"/"no"/"da verificare"), own_product_line_note (string, breve spiegazione del perche'), ` +
+    `summary (stringa di 2-3 frasi in italiano sulla storia/stile del negozio, basata SOLO sui dati forniti), ` +
+    `draft_message (stringa, messaggio di contatto in italiano da inviare su Instagram, che DEVE iniziare con "Ciao! Ti scrivo dal team di SHOCK Male Grooming." e poi spiegare che stiamo facendo una selezione molto ristretta dei migliori barbieri della zona per proporre una collaborazione come Ambassador, personalizzando il messaggio richiamando lo stile specifico di quel negozio emerso dai dati -es. vintage, moderno, minimal, ecc.-, in tono persuasivo ma non invadente, massimo 80 parole).`;
+
+  const r = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${env.GROQ_API_KEY}` },
+    body: JSON.stringify({
+      model: "openai/gpt-oss-120b",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+      temperature: 0.4,
+      max_tokens: 3000,
+    }),
+  });
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error("Groq: " + (body.error?.message || JSON.stringify(body).slice(0, 200)));
+  const text = body.choices?.[0]?.message?.content || "";
+  let jsonText = text.trim();
+  const fenceMatch = jsonText.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fenceMatch) jsonText = fenceMatch[1].trim();
+  const arrMatch = jsonText.match(/\[[\s\S]*\]/);
+  if (arrMatch) jsonText = arrMatch[0];
+  let parsed;
+  try {
+    parsed = JSON.parse(jsonText);
+  } catch (e) {
+    throw new Error("Risposta AI non interpretabile come JSON: " + String(e).slice(0, 150));
+  }
+  if (!Array.isArray(parsed)) throw new Error("Risposta AI non e' un array");
+  return parsed.map((c) => ({ ...c, region }));
+}
+
 async function handleScoutingRequestSearch(request, env) {
   const pwd = request.headers.get("X-Admin-Password") || "";
   if (!env.ADMIN_PASSWORD || pwd !== env.ADMIN_PASSWORD) return jsonRes({ error: "Non autorizzato" }, 401);
@@ -1878,12 +1977,16 @@ async function handleScoutingRequestSearch(request, env) {
   } catch (_) {}
   const region = String(body.region || "").trim();
   if (!region) return jsonRes({ error: "Regione mancante" }, 400);
-  const current = await getScoutingRegions(env);
-  const pending = (current.pending || []).filter((p) => p.region !== region);
-  pending.push({ region, requested_at: new Date().toISOString() });
-  const cfg = { regions: current.regions, pending };
-  await store.put(KV_SCOUTING_REGIONS, JSON.stringify(cfg));
-  return jsonRes({ ok: true, ...cfg });
+  try {
+    const found = await runAutomatedScoutingSearch(env, region);
+    const { added, skipped, all } = await saveScoutingCandidates(env, found);
+    const current = await getScoutingRegions(env);
+    const pending = (current.pending || []).filter((p) => p.region !== region);
+    await store.put(KV_SCOUTING_REGIONS, JSON.stringify({ regions: current.regions, pending }));
+    return jsonRes({ ok: true, added: added.length, skipped, candidates: all });
+  } catch (e) {
+    return jsonRes({ error: String(e).slice(0, 300) }, 500);
+  }
 }
 
 async function getScoutingCandidates(env) {
@@ -1904,18 +2007,12 @@ async function handleScoutingList(request, env) {
   return jsonRes({ candidates: await getScoutingCandidates(env) });
 }
 
-// Usata da Claude (non dal browser) per salvare i candidati trovati
-// durante una ricerca manuale. Accetta uno o piu' candidati insieme.
-async function handleScoutingAdd(request, env) {
-  const pwd = request.headers.get("X-Admin-Password") || "";
-  if (!env.ADMIN_PASSWORD || pwd !== env.ADMIN_PASSWORD) return jsonRes({ error: "Non autorizzato" }, 401);
+// Salva una lista di candidati grezzi (da ricerca automatica o manuale),
+// deduplicando per instagram_handle/nome. Condivisa da handleScoutingAdd
+// e dalla pipeline di ricerca automatica.
+async function saveScoutingCandidates(env, incoming) {
   const store = kv(env);
-  if (!store) return jsonRes({ error: "Memoria KV non collegata" }, 501);
-  let body = {};
-  try {
-    body = await request.json();
-  } catch (_) {}
-  const incoming = Array.isArray(body.candidates) ? body.candidates : [body];
+  if (!store) throw new Error("Memoria KV non collegata");
   const existing = await getScoutingCandidates(env);
   const existingKeys = new Set(existing.map((c) => (c.instagram_handle || c.name || "").toLowerCase()));
   const added = [];
@@ -1948,14 +2045,33 @@ async function handleScoutingAdd(request, env) {
     added.push(candidate);
   }
   await store.put(KV_SCOUTING_CANDIDATES, JSON.stringify(existing));
-  // La ricerca per questa regione e' stata evasa: la togliamo dalla coda.
-  if (added.length) {
-    const cfg = await getScoutingRegions(env);
-    const region = added[0].region;
-    const pending = (cfg.pending || []).filter((p) => p.region !== region);
-    await store.put(KV_SCOUTING_REGIONS, JSON.stringify({ regions: cfg.regions, pending }));
+  return { added, skipped: incoming.length - added.length, all: existing };
+}
+
+// Usata da Claude (non dal browser) per salvare i candidati trovati
+// durante una ricerca manuale. Accetta uno o piu' candidati insieme.
+async function handleScoutingAdd(request, env) {
+  const pwd = request.headers.get("X-Admin-Password") || "";
+  if (!env.ADMIN_PASSWORD || pwd !== env.ADMIN_PASSWORD) return jsonRes({ error: "Non autorizzato" }, 401);
+  let body = {};
+  try {
+    body = await request.json();
+  } catch (_) {}
+  const incoming = Array.isArray(body.candidates) ? body.candidates : [body];
+  try {
+    const { added, skipped } = await saveScoutingCandidates(env, incoming);
+    // Se tra i candidati salvati c'era una regione in coda manuale, la togliamo.
+    if (added.length) {
+      const store = kv(env);
+      const cfg = await getScoutingRegions(env);
+      const region = added[0].region;
+      const pending = (cfg.pending || []).filter((p) => p.region !== region);
+      await store.put(KV_SCOUTING_REGIONS, JSON.stringify({ regions: cfg.regions, pending }));
+    }
+    return jsonRes({ ok: true, added: added.length, skipped });
+  } catch (e) {
+    return jsonRes({ error: String(e).slice(0, 300) }, 500);
   }
-  return jsonRes({ ok: true, added: added.length, skipped: incoming.length - added.length });
 }
 
 async function handleScoutingUpdate(request, env) {
