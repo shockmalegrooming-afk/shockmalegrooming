@@ -3,7 +3,7 @@ const CORS = {
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, X-Admin-Password",
 };
-// force-redeploy: pick up new secrets (v3)
+// force-redeploy: pick up new secrets (v4)
 
 // Soglie del programma punti: [punti richiesti, sconto in euro].
 // La STESSA tabella e' anche scritta a mano nel pannello admin e nella
@@ -1830,17 +1830,22 @@ async function handleScoutingRegions(request, env) {
 async function handleTestGroqSearch(request, env) {
   const pwd = request.headers.get("X-Admin-Password") || "";
   if (!env.ADMIN_PASSWORD || pwd !== env.ADMIN_PASSWORD) return jsonRes({ error: "Non autorizzato" }, 401);
-  if (!env.GROQ_API_KEY) return jsonRes({ error: "GROQ_API_KEY non configurata" }, 400);
+  if (!env.TAVILY_API_KEY) return jsonRes({ error: "TAVILY_API_KEY non configurata" }, 400);
   try {
-    const modelsR = await fetch("https://api.groq.com/openai/v1/models", {
-      headers: { Authorization: `Bearer ${env.GROQ_API_KEY}` },
+    const r = await fetch("https://api.tavily.com/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${env.TAVILY_API_KEY}` },
+      body: JSON.stringify({
+        query: "migliori barber shop Milano recensioni instagram",
+        max_results: 5,
+      }),
     });
-    const modelsBody = await modelsR.json().catch(() => ({}));
-    const modelIds = (modelsBody.data || []).map((m) => m.id);
-    return jsonRes({ models: modelIds });
+    const body = await r.json().catch(() => ({}));
+    return jsonRes({ status: r.status, body });
   } catch (e) {
     return jsonRes({ error: String(e).slice(0, 300) }, 500);
   }
+}
 }
 
 async function handleTestGroqSearchOld(request, env) {
