@@ -93,6 +93,12 @@ export default {
     if (pathname === "/api/scouting/request-search") return handleScoutingRequestSearch(request, env);
     if (pathname === "/api/scouting/testgroqsearch") return handleTestGroqSearch(request, env);
 
+    if (pathname === "/api/reviews/submit") return handleReviewSubmit(request, env);
+    if (pathname === "/api/reviews/list") return handleReviewList(request, env);
+    if (pathname === "/api/reviews/photo") return handleReviewPhoto(request, env);
+    if (pathname === "/api/reviews/list-admin") return handleReviewListAdmin(request, env);
+    if (pathname === "/api/reviews/moderate") return handleReviewModerate(request, env);
+
     if (pathname === "/api/dev/enter") return devEnter(request, env);
     if (pathname === "/api/dev/exit") return devExit(request, env);
     if (pathname === "/api/dev/state") return devState(request, env);
@@ -2125,6 +2131,182 @@ async function handleScoutingRemove(request, env) {
   if (!id) return jsonRes({ error: "id mancante" }, 400);
   const candidates = (await getScoutingCandidates(env)).filter((x) => x.id !== id);
   await store.put(KV_SCOUTING_CANDIDATES, JSON.stringify(candidates));
+  return jsonRes({ ok: true });
+}
+
+/* ───────────────────────────────────────────────────────────────────
+   RECENSIONI SITO (generali, non per prodotto)
+   Chiunque puo' inviarne una (nome, stelle, testo, foto opzionali, come
+   le recensioni Google) ma resta "pending" finche' un admin non la
+   approva dal pannello — nessuna verifica d'acquisto, la moderazione
+   e' l'unico filtro. Le foto non entrano nella lista principale (che
+   resta leggera) ma in chiavi KV separate, lette da handleReviewPhoto.
+──────────────────────────────────────────────────────────────────── */
+const KV_REVIEWS = "site:reviews";
+
+async function getReviews(env) {
+  const store = kv(env);
+  if (!store) return [];
+  const v = await store.get(KV_REVIEWS);
+  if (!v) return [];
+  try {
+    return JSON.parse(v) || [];
+  } catch (_) {
+    return [];
+  }
+}
+
+async function saveReviews(env, list) {
+  const store = kv(env);
+  if (!store) throw new Error("Memoria KV non collegata");
+  await store.put(KV_REVIEWS, JSON.stringify(list));
+}
+
+async function deleteReviewPhotos(env, review) {
+  const store = kv(env);
+  if (!store || !Array.isArray(review.photo_ids)) return;
+  await Promise.all(review.photo_ids.map((pid) => store.delete("review-photo:" + pid).catch(() => null)));
+}
+
+// Invio pubblico di una recensione (nessuna password, nessuna verifica
+// d'acquisto). Honeypot + limite per IP contro lo spam piu' banale.
+async function handleReviewSubmit(request, env) {
+  const store = kv(env);
+  if (!store) return jsonRes({ error: "Memoria non collegata" }, 501);
+  let body = {};
+  try {
+    body = await request.json();
+  } catch (_) {}
+
+  // Honeypot: un bot che compila tutto compila anche questo campo
+  // invisibile. Rispondiamo "ok" per non rivelargli che e' stato scartato.
+  if (body.website) return jsonRes({ ok: true });
+
+  const name = String(body.name || "").trim().slice(0, 60);
+  const text = String(body.text || "").trim().slice(0, 1000);
+  const rating = Math.min(5, Math.max(1, parseInt(body.rating, 10) || 0));
+  if (!name || !text || text.length < 10 || !rating) {
+    return jsonRes({ error: "Compila nome, recensione (almeno 10 caratteri) e valutazione" }, 400);
+  }
+
+  // Rate limit basico per IP: max 5 invii/ora.
+  const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+  const rlKey = "review-rl:" + ip;
+  const rlCount = parseInt((await store.get(rlKey)) || "0", 10);
+  if (rlCount >= 5) return jsonRes({ error: "Troppi invii da questo indirizzo, riprova piu' tardi" }, 429);
+  await store.put(rlKey, String(rlCount + 1), { expirationTtl: 3600 });
+
+  const id = crypto.randomUUID();
+  const photosIn = Array.isArray(body.photos) ? body.photos.slice(0, 4) : [];
+  const photo_ids = [];
+  for (let i = 0; i < photosIn.length; i++) {
+    const ph = photosIn[i];
+    if (!ph || typeof ph.data !== "string") continue;
+    let mime = ph.mime || "image/jpeg";
+    let b64 = ph.data;
+    const m = b64.match(/^data:([^;]+);base64,([\s\S]*)$/);
+    if (m) {
+      mime = m[1];
+      b64 = m[2];
+    }
+    if (b64.length > 6000000) continue; // ~4.5MB decodificati, limite di sicurezza
+    const pid = id + "-" + i;
+    await store.put("review-photo:" + pid, JSON.stringify({ mime, data: b64 }));
+    photo_ids.push(pid);
+  }
+
+  const reviews = await getReviews(env);
+  reviews.push({
+    id,
+    name,
+    rating,
+    text,
+    photo_ids,
+    status: "pending",
+    created_at: new Date().toISOString(),
+    approved_at: null,
+  });
+  await saveReviews(env, reviews);
+  return jsonRes({ ok: true });
+}
+
+// Lista pubblica: solo le recensioni approvate, con media e conteggio reali.
+async function handleReviewList(request, env) {
+  const all = await getReviews(env);
+  const approved = all.filter((r) => r.status === "approved");
+  approved.sort((a, b) => new Date(b.approved_at || b.created_at) - new Date(a.approved_at || a.created_at));
+  const avg = approved.length ? approved.reduce((s, r) => s + r.rating, 0) / approved.length : 0;
+  const pub = approved.map((r) => ({
+    id: r.id,
+    name: r.name,
+    rating: r.rating,
+    text: r.text,
+    photo_ids: r.photo_ids || [],
+    date: r.approved_at || r.created_at,
+  }));
+  return jsonRes({ reviews: pub, avg, count: approved.length });
+}
+
+// Serve una singola foto di recensione (pubblica, URL opaco e non enumerabile
+// in pratica essendo basato su un UUID — non serve password per vederla).
+async function handleReviewPhoto(request, env) {
+  const store = kv(env);
+  const url = new URL(request.url);
+  const id = url.searchParams.get("id") || "";
+  if (!store || !id) return new Response("Not found", { status: 404 });
+  const v = await store.get("review-photo:" + id);
+  if (!v) return new Response("Not found", { status: 404 });
+  let parsed;
+  try {
+    parsed = JSON.parse(v);
+  } catch (_) {
+    return new Response("Not found", { status: 404 });
+  }
+  let bin;
+  try {
+    const bin0 = atob(parsed.data);
+    bin = new Uint8Array(bin0.length);
+    for (let i = 0; i < bin0.length; i++) bin[i] = bin0.charCodeAt(i);
+  } catch (_) {
+    return new Response("Not found", { status: 404 });
+  }
+  return new Response(bin, {
+    headers: { "Content-Type": parsed.mime || "image/jpeg", "Cache-Control": "public, max-age=31536000, immutable", ...CORS },
+  });
+}
+
+// Lista admin: tutte le recensioni (in attesa + approvate), per la moderazione.
+async function handleReviewListAdmin(request, env) {
+  const pwd = request.headers.get("X-Admin-Password") || "";
+  if (!env.ADMIN_PASSWORD || pwd !== env.ADMIN_PASSWORD) return jsonRes({ error: "Non autorizzato" }, 401);
+  const all = await getReviews(env);
+  all.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  return jsonRes({ reviews: all });
+}
+
+// Approva o rifiuta (= elimina, foto comprese) una recensione. Usata anche
+// per "rimuovere" una recensione gia' approvata (azione "reject").
+async function handleReviewModerate(request, env) {
+  const pwd = request.headers.get("X-Admin-Password") || "";
+  if (!env.ADMIN_PASSWORD || pwd !== env.ADMIN_PASSWORD) return jsonRes({ error: "Non autorizzato" }, 401);
+  let body = {};
+  try {
+    body = await request.json();
+  } catch (_) {}
+  const { id, action } = body;
+  if (!id || (action !== "approve" && action !== "reject")) return jsonRes({ error: "Parametri non validi" }, 400);
+  const reviews = await getReviews(env);
+  const idx = reviews.findIndex((r) => r.id === id);
+  if (idx === -1) return jsonRes({ error: "Recensione non trovata" }, 404);
+  if (action === "approve") {
+    reviews[idx].status = "approved";
+    reviews[idx].approved_at = new Date().toISOString();
+    await saveReviews(env, reviews);
+  } else {
+    await deleteReviewPhotos(env, reviews[idx]);
+    reviews.splice(idx, 1);
+    await saveReviews(env, reviews);
+  }
   return jsonRes({ ok: true });
 }
 
